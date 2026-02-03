@@ -30,7 +30,7 @@
 
 [15] **AE: mindmap-cli** - v0 implementation started; added CHECKLIST.md; implemented Rust skeleton (parser + CLI) and verified build succeeds; commands implemented: show,list,search,refs,links,add,deprecate,verify,lint; added atomic save and edit command (updated 2026-02-03)
 
-[16] **TODO: v0 phases** - Follow CHECKLIST.md: Phase1 parser, Phase2 commands, Phase3 navigation, Phase4 edit, Phase5 lint, tests (2026-02-03)
+[16] **TODO: v0 phases** - Follow CHECKLIST.md: Phase1 parser, Phase2 commands, Phase3 navigation, Phase4 edit, Phase5 lint, tests (integration tests added 2026-02-03); CI workflow added (updated 2026-02-03)
 
 [17] **DONE: CHECKLIST.md** - Created CHECKLIST.md with actionable implementation checklist for v0 (2026-02-03)
 

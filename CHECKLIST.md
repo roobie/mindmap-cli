@@ -116,7 +116,7 @@ Phase 7 — Tests & CI
 27. Integration tests
     - Use assert_cmd to run binary against temp files for add, edit (simulate editor by writing to temp file), deprecate, verify, lint.
 28. CI
-    - Run cargo fmt, clippy, build, test on PRs.
+    - Run cargo fmt, clippy, build, test on PRs. (CI workflow added: .github/workflows/ci.yml)
 
 Phase 8 — Documentation & housekeeping
 29. Update repository docs
