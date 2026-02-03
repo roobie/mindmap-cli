@@ -39,10 +39,10 @@ impl Mindmap {
 
                 let mut references = Vec::new();
                 for rcaps in ref_re.captures_iter(&description) {
-                    if let Ok(rid) = rcaps[1].parse::<u32>() {
-                        if rid != id {
-                            references.push(rid);
-                        }
+                    if let Ok(rid) = rcaps[1].parse::<u32>()
+                        && rid != id
+                    {
+                        references.push(rid);
                     }
                 }
 
@@ -110,10 +110,10 @@ pub fn parse_node_line(line: &str, line_index: usize) -> Result<Node> {
     let description = caps[3].to_string();
     let mut references = Vec::new();
     for rcaps in ref_re.captures_iter(&description) {
-        if let Ok(rid) = rcaps[1].parse::<u32>() {
-            if rid != id {
-                references.push(rid);
-            }
+        if let Ok(rid) = rcaps[1].parse::<u32>()
+            && rid != id
+        {
+            references.push(rid);
         }
     }
     Ok(Node {
@@ -151,10 +151,10 @@ pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
 pub fn cmd_list(mm: &Mindmap, type_filter: Option<&str>, grep: Option<&str>) -> Vec<String> {
     let mut res = Vec::new();
     for n in &mm.nodes {
-        if let Some(tf) = type_filter {
-            if !n.raw_title.starts_with(&format!("{}:", tf)) {
-                continue;
-            }
+        if let Some(tf) = type_filter
+            && !n.raw_title.starts_with(&format!("{}:", tf))
+        {
+            continue;
         }
         if let Some(q) = grep {
             let qlc = q.to_lowercase();
@@ -215,10 +215,10 @@ pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, desc: &str) -> 
     let refs_re = Regex::new(r#"\[(\d+)\]"#)?;
     let mut references = Vec::new();
     for rcaps in refs_re.captures_iter(desc) {
-        if let Ok(rid) = rcaps[1].parse::<u32>() {
-            if rid != id {
-                references.push(rid);
-            }
+        if let Ok(rid) = rcaps[1].parse::<u32>()
+            && rid != id
+        {
+            references.push(rid);
         }
     }
 
@@ -330,10 +330,10 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let mut new_refs = Vec::new();
     let ref_re = Regex::new(r#"\[(\d+)\]"#)?;
     for rcaps in ref_re.captures_iter(&new_desc) {
-        if let Ok(rid) = rcaps[1].parse::<u32>() {
-            if rid != id {
-                new_refs.push(rid);
-            }
+        if let Ok(rid) = rcaps[1].parse::<u32>()
+            && rid != id
+        {
+            new_refs.push(rid);
         }
     }
 
@@ -502,10 +502,10 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     // 2) Duplicate IDs: scan lines for node ids
     let mut id_map: HashMap<u32, Vec<usize>> = HashMap::new();
     for (i, line) in mm.lines.iter().enumerate() {
-        if let Some(caps) = node_re.captures(line) {
-            if let Ok(id) = caps[1].parse::<u32>() {
-                id_map.entry(id).or_default().push(i + 1);
-            }
+        if let Some(caps) = node_re.captures(line)
+            && let Ok(id) = caps[1].parse::<u32>()
+        {
+            id_map.entry(id).or_default().push(i + 1);
         }
     }
     for (id, locations) in &id_map {

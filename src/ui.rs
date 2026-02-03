@@ -1,8 +1,5 @@
 use anyhow::Result;
 use pretty_console::Console;
-use std::io::{self, Write};
-
-use mindmap_cli;
 
 pub trait Printer {
     fn show(&self, node: &mindmap_cli::Node) -> Result<()>;
