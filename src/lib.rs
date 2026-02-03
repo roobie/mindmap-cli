@@ -529,7 +529,17 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
         }
     }
 
-    // 4) Orphans: nodes with no in and no out, excluding META:*
+    if warnings.is_empty() {
+        Ok(vec!["Lint OK".to_string()])
+    } else {
+        Ok(warnings)
+    }
+}
+
+pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
+    let mut warnings = Vec::new();
+
+    // Orphans: nodes with no in and no out, excluding META:*
     let mut incoming: HashMap<u32, usize> = HashMap::new();
     for n in &mm.nodes {
         incoming.entry(n.id).or_insert(0);
@@ -551,7 +561,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     }
 
     if warnings.is_empty() {
-        Ok(vec!["Lint OK".to_string()])
+        Ok(vec!["No orphans".to_string()])
     } else {
         Ok(warnings)
     }
@@ -617,11 +627,15 @@ mod tests {
 
         let mm = Mindmap::load(file.path().to_path_buf())?;
         let warnings = cmd_lint(&mm)?;
-        // Expect at least syntax, duplicate, and orphan warnings
+        // Expect at least syntax and duplicate warnings from lint
         let joined = warnings.join("\n");
         assert!(joined.contains("Syntax"));
         assert!(joined.contains("Duplicate ID"));
-        assert!(joined.contains("Orphan"));
+
+        // Orphan detection is now a separate command; verify orphans via cmd_orphans()
+        let orphans = cmd_orphans(&mm)?;
+        let joined_o = orphans.join("\n");
+        assert!(joined_o.contains("Orphan"));
 
         temp.close()?;
         Ok(())

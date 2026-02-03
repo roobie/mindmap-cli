@@ -112,6 +112,9 @@ enum Commands {
 
     /// Lint the mindmap for basic issues
     Lint,
+
+    /// Show orphan nodes (no in & no out, excluding META)
+    Orphans,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -276,6 +279,17 @@ fn main() -> anyhow::Result<()> {
             let res = mindmap_cli::cmd_lint(&mm)?;
             if matches!(cli.output, OutputFormat::Json) {
                 let obj = serde_json::json!({"command": "lint", "warnings": res});
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                for r in res {
+                    eprintln!("{}", r);
+                }
+            }
+        }
+        Commands::Orphans => {
+            let res = mindmap_cli::cmd_orphans(&mm)?;
+            if matches!(cli.output, OutputFormat::Json) {
+                let obj = serde_json::json!({"command": "orphans", "orphans": res});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else {
                 for r in res {
