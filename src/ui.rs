@@ -71,16 +71,13 @@ impl Printer for PrettyPrinter {
     }
 
     fn orphans(&self, orphans: &[String]) -> Result<()> {
-        // Orphans are considered warnings/meta information — write to stderr
+        // Orphans are data for the orphans command — print to stdout
         if orphans.is_empty() {
-            let s = Console::new("No orphans").green().to_string();
-            eprintln!("{}", s);
+            Console::new("No orphans").green().println();
         } else {
-            let header = Console::new("Orphans:").yellow().bold().to_string();
-            eprintln!("{}", header);
+            Console::new("Orphans:").yellow().bold().println();
             for o in orphans {
-                let s = Console::new(o).to_string();
-                eprintln!("{}", s);
+                Console::new(o).println();
             }
         }
         Ok(())
@@ -135,13 +132,12 @@ impl Printer for PlainPrinter {
     }
 
     fn orphans(&self, orphans: &[String]) -> Result<()> {
-        // Orphans are considered warnings/meta information — write to stderr
         if orphans.is_empty() {
-            eprintln!("No orphans");
+            println!("No orphans");
         } else {
-            eprintln!("Orphans:");
+            println!("Orphans:");
             for o in orphans {
-                eprintln!("{}", o);
+                println!("{}", o);
             }
         }
         Ok(())
