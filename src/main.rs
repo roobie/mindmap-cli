@@ -83,8 +83,8 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Links { id } => match mindmap_cli::cmd_links(&mm, id) {
-            Some(v) => println!("Node {} references: {:?}", id, v),
-            None => eprintln!("Node {} not found", id),
+            Some(v) => println!("Node [{}] references: {:?}", id, v),
+            None => eprintln!("Node [{}] not found", id),
         },
         Commands::Search { query } => {
             for it in mindmap_cli::cmd_search(&mm, &query) {
@@ -103,18 +103,18 @@ fn main() -> anyhow::Result<()> {
         Commands::Deprecate { id, to } => {
             mindmap_cli::cmd_deprecate(&mut mm, id, to)?;
             mm.save()?;
-            println!("Deprecated node {} → {}", id, to);
+            println!("Deprecated node [{}] → [{}]", id, to);
         }
         Commands::Edit { id } => {
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
             mindmap_cli::cmd_edit(&mut mm, id, &editor)?;
             mm.save()?;
-            println!("Edited node {}", id);
+            println!("Edited node [{}]", id);
         }
         Commands::Verify { id } => {
             mindmap_cli::cmd_verify(&mut mm, id)?;
             mm.save()?;
-            println!("Marked node {} for verification", id);
+            println!("Marked node [{}] for verification", id);
         }
         Commands::Lint => {
             let res = mindmap_cli::cmd_lint(&mm)?;

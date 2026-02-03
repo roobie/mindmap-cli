@@ -61,7 +61,7 @@ fn integration_edit_flow() -> Result<(), Box<dyn std::error::Error>> {
         .arg("1");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Edited node 1"));
+        .stdout(predicate::str::contains("Edited node [1]"));
 
     // check file contains edited title
     file.assert(predicate::str::contains("Edited"));

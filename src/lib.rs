@@ -55,7 +55,7 @@ impl Mindmap {
                 };
 
                 if by_id.contains_key(&id) {
-                    eprintln!("Warning: duplicate node id {} at line {}", id, i + 1);
+                    eprintln!("Warning: duplicate node [{}] at line {}", id, i + 1);
                 }
                 by_id.insert(id, nodes.len());
                 nodes.push(node);
@@ -118,7 +118,7 @@ pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
         }
         out
     } else {
-        format!("Node {} not found", id)
+        format!("Node [{}] not found", id)
     }
 }
 
@@ -213,11 +213,11 @@ pub fn cmd_deprecate(mm: &mut Mindmap, id: u32, to: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!("Node [{}] not found", id))?;
 
     if !mm.by_id.contains_key(&to) {
         eprintln!(
-            "Warning: target node {} does not exist (still updating title)",
+            "Warning: target node [{}] does not exist (still updating title)",
             to
         );
     }
@@ -238,7 +238,7 @@ pub fn cmd_verify(mm: &mut Mindmap, id: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!("Node [{}] not found", id))?;
     let node = &mut mm.nodes[idx];
 
     let tag = format!("(verify {})", chrono::Local::now().format("%Y-%m-%d"));
@@ -260,7 +260,7 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!("Node [{}] not found", id))?;
     let node = &mm.nodes[idx];
 
     // create temp file with the single node line
@@ -320,24 +320,102 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn parse_node_line(line: &str, line_index: usize) -> Result<Node> {
+    let re = Regex::new(r#"^\[(\d+)\] \*\*(.+?)\*\* - (.*)$"#)?;
+    let ref_re = Regex::new(r#"\[(\d+)\]"#)?;
+    let caps = re
+        .captures(line)
+        .ok_or_else(|| anyhow::anyhow!("Line does not match node format"))?;
+    let id: u32 = caps[1].parse()?;
+    let raw_title = caps[2].to_string();
+    let description = caps[3].to_string();
+    let mut references = Vec::new();
+    for rcaps in ref_re.captures_iter(&description) {
+        if let Ok(rid) = rcaps[1].parse::<u32>() {
+            if rid != id {
+                references.push(rid);
+            }
+        }
+    }
+    Ok(Node {
+        id,
+        raw_title,
+        description,
+        references,
+        line_index,
+    })
+}
+
 pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
-    let mut ok = true;
     let mut warnings = Vec::new();
 
-    // Check for missing references
-    for n in &mm.nodes {
-        for rid in &n.references {
-            if !mm.by_id.contains_key(rid) {
+    let node_re = Regex::new(r#"^\[(\d+)\] \*\*(.+?)\*\* - (.*)$"#)?;
+
+    // 1) Syntax: lines starting with '[' but not matching node regex
+    for (i, line) in mm.lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('[') {
+            if !node_re.is_match(line) {
                 warnings.push(format!(
-                    "Warning: node {} references missing node {}",
-                    n.id, rid
+                    "Syntax: line {} starts with '[' but does not match node format",
+                    i + 1
                 ));
-                ok = false;
             }
         }
     }
 
-    if ok {
+    // 2) Duplicate IDs: scan lines for node ids
+    let mut id_map: HashMap<u32, Vec<usize>> = HashMap::new();
+    for (i, line) in mm.lines.iter().enumerate() {
+        if let Some(caps) = node_re.captures(line) {
+            if let Ok(id) = caps[1].parse::<u32>() {
+                id_map.entry(id).or_insert_with(Vec::new).push(i + 1);
+            }
+        }
+    }
+    for (id, locations) in &id_map {
+        if locations.len() > 1 {
+            warnings.push(format!(
+                "Duplicate ID: node [{}] appears on lines {:?}",
+                id, locations
+            ));
+        }
+    }
+
+    // 3) Missing references
+    for n in &mm.nodes {
+        for rid in &n.references {
+            if !mm.by_id.contains_key(rid) {
+                warnings.push(format!(
+                    "Missing ref: node [{}] references missing node [{}]",
+                    n.id, rid
+                ));
+            }
+        }
+    }
+
+    // 4) Orphans: nodes with no in and no out, excluding META:*
+    let mut incoming: HashMap<u32, usize> = HashMap::new();
+    for n in &mm.nodes {
+        incoming.entry(n.id).or_insert(0);
+    }
+    for n in &mm.nodes {
+        for rid in &n.references {
+            if incoming.contains_key(rid) {
+                *incoming.entry(*rid).or_insert(0) += 1;
+            }
+        }
+    }
+    for n in &mm.nodes {
+        let inc = incoming.get(&n.id).copied().unwrap_or(0);
+        let out = n.references.len();
+        let title_up = n.raw_title.to_uppercase();
+        if inc == 0 && out == 0 && !title_up.starts_with("META") {
+            warnings.push(format!("Orphan: node [{}] appears to be orphan", n.id));
+        }
+    }
+
+    if warnings.is_empty() {
         Ok(vec!["Lint OK".to_string()])
     } else {
         Ok(warnings)
@@ -392,6 +470,24 @@ mod tests {
 
         let content = std::fs::read_to_string(file.path())?;
         assert!(content.contains("AE: C"));
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_lint_syntax_and_duplicates_and_orphan() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[bad] not a node\n[1] **AE: A** - base\n[1] **AE: Adup** - dup\n[2] **AE: Orphan** - lonely\n")?;
+
+        let mm = Mindmap::load(file.path().to_path_buf())?;
+        let warnings = cmd_lint(&mm)?;
+        // Expect at least syntax, duplicate, and orphan warnings
+        let joined = warnings.join("\n");
+        assert!(joined.contains("Syntax"));
+        assert!(joined.contains("Duplicate ID"));
+        assert!(joined.contains("Orphan"));
+
         temp.close()?;
         Ok(())
     }
