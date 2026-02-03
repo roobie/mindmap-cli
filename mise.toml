@@ -1,0 +1,35 @@
+[tools]
+rust = "1.93"
+watchexec = "2"
+
+[tasks.fmt]
+description = "Format rust code"
+run = "cargo fmt --all"
+
+[tasks.lint]
+description = "Check formatting and run clippy"
+depends = ["fmt"]
+run = "cargo fmt --all -- --check && cargo clippy --all -- -D warnings"
+
+[tasks.lint-fix]
+description = "Auto-fix clippy issues"
+run = "cargo clippy --all --fix"
+
+[tasks.build]
+description = "Build the project"
+depends = ["deps", "lint"]
+run = "cargo build"
+
+[tasks.test]
+description = "Run cli tests"
+depends = ["build"]
+run = "cargo test"
+
+[tasks.install]
+description = "Install binary"
+depends = ["test"]
+run = "cargo install"
+
+[tasks.publish]
+description = "Publish to crates.io"
+run = "cargo publish"
