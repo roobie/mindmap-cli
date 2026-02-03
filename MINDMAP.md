@@ -45,3 +45,9 @@
 [18] **AE: mindmap-cli default** - Default mindmap file changed to MINDMAP.md (removed .core) (updated 2026-02-03)
 
 [19] **DONE: Lint & Validation** - Implemented syntax checks, duplicate ID detection, missing-ref warnings and orphan detection; added unit and integration tests for lint (updated 2026-02-03)
+[21] **DR: Default filename = MINDMAP.md** - Default mindmap filename is ./MINDMAP.md; CLI and tests rely on this default; override with --file if needed.
+[22] **DR: Node format regex** - Nodes must follow ^\[(\d+)\] \*\*(.+?)\*\* - (.*)$ (one-node-per-line). Parsers, edit, and lint depend on this exact format.
+[23] **DR: ID immutability** - Node numeric IDs are immutable; edits/put/patch must preserve the bracketed id. Tests enforce reject on id change.
+[24] **DR: Atomic save strategy** - Writes are atomic: write to temp file in same dir and persist/rename to replace original to avoid partial writes.
+[25] **DR: Editor single-line validation** - Edit flow provides a single-line temp file; editor must produce exactly one valid node line or the edit is aborted to prevent file corruption.
+[26] **DR: PUT and PATCH semantics** - PUT = full-line replace (id must match); PATCH = partial update of type/title/desc; --strict fails on missing refs.
