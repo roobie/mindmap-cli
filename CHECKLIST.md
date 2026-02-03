@@ -3,6 +3,7 @@ Actionable checklist (v0) for implementing the mindmap CLI
 Progress (updated 2026-02-03):
 - Phase 0 (project bootstrap) completed: project layout created and initial Cargo.toml/src/main.rs added.
 - Rust skeleton implemented and build verified (commands: show/list/search/refs/links/add/deprecate/verify/lint).
+- Refactor into src/lib.rs and unit tests added; integration tests added; atomic save and edit command implemented; lint & validation implemented (syntax, duplicate IDs, missing refs, orphan detection) (updated 2026-02-03).
 
 Assumptions
 - Default mindmap path: ./MINDMAP.md (override with --file).
@@ -82,18 +83,17 @@ Phase 4 — Edit & maintain
     - Append "(verify YYYY-MM-DD)" to description if not present (use chrono for date).
     - Update mm.lines and save.
 
-Phase 5 — Lint / Safety
-18. Implement cmd_lint
-    - Checks:
+Phase 5 — Lint / Safety (implemented)
+18. Implement cmd_lint (done)
+    - Checks implemented:
       - Lines that start with '[' but do not match node regex (syntax errors).
       - Duplicate IDs.
       - References to non-existent IDs (warn).
-      - Orphans (no in & no out) — skip nodes of type META/META:*, Overview nodes.
-      - Optionally: flag IDs that are not numeric or out-of-range.
-    - Acceptance: run cargo run -- lint on sample file; see specific warnings.
-19. Add validation helpers
-    - validate_node_line(line: &str) -> Result<Node> to reuse in add/edit.
-    - Ensure edits preserve one-node-per-line invariant.
+      - Orphans (no in & no out) — skips nodes of type META/*.
+      - Acceptance: `cargo run -- lint` returns warnings; unit & integration tests cover cases.
+19. Add validation helpers (done)
+    - parse_node_line(line: &str, line_index: usize) -> Result<Node> implemented and used in tests and lint.
+    - Edits validated to preserve one-node-per-line invariant and prevent ID changes.
 
 Phase 6 — Robustness & UX improvements
 20. Atomic and safe writes
