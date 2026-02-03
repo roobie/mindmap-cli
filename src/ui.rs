@@ -37,7 +37,9 @@ impl Printer for PrettyPrinter {
         // Outgoing references in magenta
         if !outbound.is_empty() {
             Console::new("Outgoing:").magenta().print();
-            Console::new(&format!(" {:?}", outbound)).magenta().println();
+            Console::new(&format!(" {:?}", outbound))
+                .magenta()
+                .println();
         }
 
         Ok(())
@@ -77,7 +79,7 @@ impl Printer for PrettyPrinter {
         } else {
             Console::new("Orphans:").yellow().bold().println();
             for o in orphans {
-                Console::new(o).println();
+                Console::new(format!("[{}]", o)).println();
             }
         }
         Ok(())

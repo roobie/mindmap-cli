@@ -556,7 +556,7 @@ pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
         let out = n.references.len();
         let title_up = n.raw_title.to_uppercase();
         if inc == 0 && out == 0 && !title_up.starts_with("META") {
-            warnings.push(format!("Orphan: node {} appears to be orphan", n.id));
+            warnings.push(format!("{}", n.id));
         }
     }
 
