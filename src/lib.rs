@@ -442,6 +442,47 @@ pub fn cmd_patch(
     Ok(())
 }
 
+pub fn cmd_delete(mm: &mut Mindmap, id: u32, force: bool) -> Result<()> {
+    // find node index
+    let idx = *mm
+        .by_id
+        .get(&id)
+        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+
+    // check incoming references
+    let mut incoming_from = Vec::new();
+    for n in &mm.nodes {
+        if n.references.contains(&id) {
+            incoming_from.push(n.id);
+        }
+    }
+    if !incoming_from.is_empty() && !force {
+        return Err(anyhow::anyhow!(format!(
+            "Node {} is referenced by {:?}; use --force to delete",
+            id, incoming_from
+        )));
+    }
+
+    // remove the line from lines
+    let line_idx = mm.nodes[idx].line_index;
+    mm.lines.remove(line_idx);
+
+    // remove node from nodes vector
+    mm.nodes.remove(idx);
+
+    // rebuild by_id and fix line_index for nodes after removed line
+    mm.by_id.clear();
+    for (i, node) in mm.nodes.iter_mut().enumerate() {
+        // if node was after removed line, decrement its line_index
+        if node.line_index > line_idx {
+            node.line_index -= 1;
+        }
+        mm.by_id.insert(node.id, i);
+    }
+
+    Ok(())
+}
+
 pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     let mut warnings = Vec::new();
 
@@ -450,13 +491,11 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     // 1) Syntax: lines starting with '[' but not matching node regex
     for (i, line) in mm.lines.iter().enumerate() {
         let trimmed = line.trim_start();
-        if trimmed.starts_with('[') {
-            if !node_re.is_match(line) {
-                warnings.push(format!(
-                    "Syntax: line {} starts with '[' but does not match node format",
-                    i + 1
-                ));
-            }
+        if trimmed.starts_with('[') && !node_re.is_match(line) {
+            warnings.push(format!(
+                "Syntax: line {} starts with '[' but does not match node format",
+                i + 1
+            ));
         }
     }
 
@@ -465,7 +504,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     for (i, line) in mm.lines.iter().enumerate() {
         if let Some(caps) = node_re.captures(line) {
             if let Ok(id) = caps[1].parse::<u32>() {
-                id_map.entry(id).or_insert_with(Vec::new).push(i + 1);
+                id_map.entry(id).or_default().push(i + 1);
             }
         }
     }

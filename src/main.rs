@@ -98,6 +98,9 @@ enum Commands {
     /// Mark a node as needing verification (append verify tag)
     Verify { id: u32 },
 
+    /// Delete a node by ID; use --force to remove even if referenced
+    Delete { id: u32, #[arg(long)] force: bool },
+
     /// Lint the mindmap for basic issues
     Lint,
 }
@@ -178,6 +181,11 @@ fn main() -> anyhow::Result<()> {
             mindmap_cli::cmd_verify(&mut mm, id)?;
             mm.save()?;
             println!("Marked node [{}] for verification", id);
+        }
+        Commands::Delete { id, force } => {
+            mindmap_cli::cmd_delete(&mut mm, id, force)?;
+            mm.save()?;
+            println!("Deleted node [{}]", id);
         }
         Commands::Lint => {
             let res = mindmap_cli::cmd_lint(&mm)?;
