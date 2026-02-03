@@ -118,7 +118,9 @@ fn integration_patch_and_put() -> Result<(), Box<dyn std::error::Error>> {
         .arg("1")
         .arg("--title")
         .arg("AlphaX");
-    cmd.assert().success().stdout(predicate::str::contains("Patched node [1]"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Patched node [1]"));
 
     // put full line for node 2
     let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
@@ -127,7 +129,9 @@ fn integration_patch_and_put() -> Result<(), Box<dyn std::error::Error>> {
         .arg("2")
         .arg("--line")
         .arg("[2] **DR: NewBeta** - newb [1]");
-    cmd2.assert().success().stdout(predicate::str::contains("Put node [2]"));
+    cmd2.assert()
+        .success()
+        .stdout(predicate::str::contains("Put node [2]"));
 
     // verify file contents
     let content = std::fs::read_to_string(file.path())?;

@@ -133,7 +133,13 @@ fn main() -> anyhow::Result<()> {
             mm.save()?;
             println!("Edited node [{}]", id);
         }
-        Commands::Patch { id, r#type, title, desc, strict } => {
+        Commands::Patch {
+            id,
+            r#type,
+            title,
+            desc,
+            strict,
+        } => {
             mindmap_cli::cmd_patch(
                 &mut mm,
                 id,
