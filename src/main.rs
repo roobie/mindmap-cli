@@ -68,11 +68,14 @@ enum Commands {
     /// Add a new node
     Add {
         #[arg(long)]
-        r#type: String,
+        r#type: Option<String>,
         #[arg(long)]
-        title: String,
+        title: Option<String>,
         #[arg(long)]
-        desc: String,
+        desc: Option<String>,
+        /// When using editor flow, perform strict reference validation
+        #[arg(long)]
+        strict: bool,
     },
 
     /// Deprecate a node, redirecting to another
@@ -245,20 +248,39 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Add {
-            r#type,
-            title,
-            desc,
-        } => {
-            let id = mindmap_cli::cmd_add(&mut mm, &r#type, &title, &desc)?;
-            mm.save()?;
-            if matches!(cli.output, OutputFormat::Json)
-                && let Some(node) = mm.get_node(id)
-            {
-                let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
-                println!("{}", serde_json::to_string_pretty(&obj)?);
+        Commands::Add { r#type, title, desc, strict } => {
+            match (r#type.as_deref(), title.as_deref(), desc.as_deref()) {
+                (Some(tp), Some(tt), Some(dd)) => {
+                    let id = mindmap_cli::cmd_add(&mut mm, tp, tt, dd)?;
+                    mm.save()?;
+                    if matches!(cli.output, OutputFormat::Json) {
+                        if let Some(node) = mm.get_node(id) {
+                            let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                            println!("{}", serde_json::to_string_pretty(&obj)?);
+                        }
+                    }
+                    eprintln!("Added node [{}]", id);
+                }
+                (None, None, None) => {
+                    // editor flow
+                    if !atty::is(atty::Stream::Stdin) {
+                        return Err(anyhow::anyhow!("add via editor requires an interactive terminal"));
+                    }
+                    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+                    let id = mindmap_cli::cmd_add_editor(&mut mm, &editor, strict)?;
+                    mm.save()?;
+                    if matches!(cli.output, OutputFormat::Json) {
+                        if let Some(node) = mm.get_node(id) {
+                            let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                            println!("{}", serde_json::to_string_pretty(&obj)?);
+                        }
+                    }
+                    eprintln!("Added node [{}]", id);
+                }
+                _ => {
+                    return Err(anyhow::anyhow!("add requires either all of --type,--title,--desc or none (editor)"));
+                }
             }
-            eprintln!("Added node [{}]", id);
         }
         Commands::Deprecate { id, to } => {
             mindmap_cli::cmd_deprecate(&mut mm, id, to)?;

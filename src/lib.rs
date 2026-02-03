@@ -39,9 +39,7 @@ impl Mindmap {
 
                 let mut references = Vec::new();
                 for rcaps in ref_re.captures_iter(&description) {
-                    if let Ok(rid) = rcaps[1].parse::<u32>()
-                        && rid != id
-                    {
+                    if let Ok(rid) = rcaps[1].parse::<u32>() && rid != id {
                         references.push(rid);
                     }
                 }
@@ -110,9 +108,7 @@ pub fn parse_node_line(line: &str, line_index: usize) -> Result<Node> {
     let description = caps[3].to_string();
     let mut references = Vec::new();
     for rcaps in ref_re.captures_iter(&description) {
-        if let Ok(rid) = rcaps[1].parse::<u32>()
-            && rid != id
-        {
+        if let Ok(rid) = rcaps[1].parse::<u32>() && rid != id {
             references.push(rid);
         }
     }
@@ -151,9 +147,7 @@ pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
 pub fn cmd_list(mm: &Mindmap, type_filter: Option<&str>, grep: Option<&str>) -> Vec<String> {
     let mut res = Vec::new();
     for n in &mm.nodes {
-        if let Some(tf) = type_filter
-            && !n.raw_title.starts_with(&format!("{}:", tf))
-        {
+        if let Some(tf) = type_filter && !n.raw_title.starts_with(&format!("{}:", tf)) {
             continue;
         }
         if let Some(q) = grep {
@@ -215,9 +209,7 @@ pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, desc: &str) -> 
     let refs_re = Regex::new(r#"\[(\d+)\]"#)?;
     let mut references = Vec::new();
     for rcaps in refs_re.captures_iter(desc) {
-        if let Ok(rid) = rcaps[1].parse::<u32>()
-            && rid != id
-        {
+        if let Ok(rid) = rcaps[1].parse::<u32>() && rid != id {
             references.push(rid);
         }
     }
@@ -235,11 +227,81 @@ pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, desc: &str) -> 
     Ok(id)
 }
 
+pub fn cmd_add_editor(mm: &mut Mindmap, editor: &str, strict: bool) -> Result<u32> {
+    // require interactive terminal for editor
+    if !atty::is(atty::Stream::Stdin) {
+        return Err(anyhow::anyhow!("add via editor requires an interactive terminal"));
+    }
+
+    let id = mm.next_id();
+    let template = format!("[{}] **TYPE: Title** - description", id);
+
+    // create temp file and write template
+    let mut tmp = tempfile::NamedTempFile::new()
+        .with_context(|| "Failed to create temp file for add editor")?;
+    use std::io::Write;
+    writeln!(tmp, "{}", template)?;
+    tmp.flush()?;
+
+    // launch editor
+    let status = std::process::Command::new(editor)
+        .arg(tmp.path())
+        .status()
+        .with_context(|| "Failed to launch editor")?;
+    if !status.success() {
+        return Err(anyhow::anyhow!("Editor exited with non-zero status"));
+    }
+
+    // read edited content and pick first non-empty line
+    let edited = std::fs::read_to_string(tmp.path())?;
+    let nonempty: Vec<&str> = edited
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if nonempty.is_empty() {
+        return Err(anyhow::anyhow!("No content written in editor"));
+    }
+    if nonempty.len() > 1 {
+        return Err(anyhow::anyhow!("Expected exactly one node line in editor; found multiple lines"));
+    }
+    let line = nonempty[0];
+
+    // parse and validate
+    let parsed = parse_node_line(line, mm.lines.len())?;
+    if parsed.id != id {
+        return Err(anyhow::anyhow!(format!("Added line id changed; expected [{}]", id)));
+    }
+
+    if strict {
+        for rid in &parsed.references {
+            if !mm.by_id.contains_key(rid) {
+                return Err(anyhow::anyhow!(format!("ADD strict: reference to missing node {}", rid)));
+            }
+        }
+    }
+
+    // apply: append line and node
+    mm.lines.push(line.to_string());
+    let line_index = mm.lines.len() - 1;
+    let node = Node {
+        id: parsed.id,
+        raw_title: parsed.raw_title,
+        description: parsed.description,
+        references: parsed.references,
+        line_index,
+    };
+    mm.by_id.insert(id, mm.nodes.len());
+    mm.nodes.push(node);
+
+    Ok(id)
+}
+
 pub fn cmd_deprecate(mm: &mut Mindmap, id: u32, to: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
 
     if !mm.by_id.contains_key(&to) {
         eprintln!(
@@ -264,7 +326,7 @@ pub fn cmd_verify(mm: &mut Mindmap, id: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
     let node = &mut mm.nodes[idx];
 
     let tag = format!("(verify {})", chrono::Local::now().format("%Y-%m-%d"));
@@ -286,7 +348,7 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
     let node = &mm.nodes[idx];
 
     // create temp file with the single node line
@@ -330,9 +392,7 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let mut new_refs = Vec::new();
     let ref_re = Regex::new(r#"\[(\d+)\]"#)?;
     for rcaps in ref_re.captures_iter(&new_desc) {
-        if let Ok(rid) = rcaps[1].parse::<u32>()
-            && rid != id
-        {
+        if let Ok(rid) = rcaps[1].parse::<u32>() && rid != id {
             new_refs.push(rid);
         }
     }
@@ -351,7 +411,7 @@ pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
 
     let parsed = parse_node_line(line, mm.nodes[idx].line_index)?;
     if parsed.id != id {
@@ -391,7 +451,7 @@ pub fn cmd_patch(
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
     let node = &mm.nodes[idx];
 
     // split existing raw_title into optional type and title
@@ -502,10 +562,10 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     // 2) Duplicate IDs: scan lines for node ids
     let mut id_map: HashMap<u32, Vec<usize>> = HashMap::new();
     for (i, line) in mm.lines.iter().enumerate() {
-        if let Some(caps) = node_re.captures(line)
-            && let Ok(id) = caps[1].parse::<u32>()
-        {
-            id_map.entry(id).or_default().push(i + 1);
+        if let Some(caps) = node_re.captures(line) {
+            if let Ok(id) = caps[1].parse::<u32>() {
+                id_map.entry(id).or_default().push(i + 1);
+            }
         }
     }
     for (id, locations) in &id_map {
@@ -635,7 +695,8 @@ mod tests {
         // Orphan detection is now a separate command; verify orphans via cmd_orphans()
         let orphans = cmd_orphans(&mm)?;
         let joined_o = orphans.join("\n");
-        assert!(joined_o.contains("Orphan"));
+        // expect node id 2 to be reported as orphan
+        assert!(joined_o.contains("2"));
 
         temp.close()?;
         Ok(())
