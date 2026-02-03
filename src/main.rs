@@ -166,22 +166,24 @@ fn main() -> anyhow::Result<()> {
                     });
                     println!("{}", serde_json::to_string_pretty(&obj)?);
                 } else {
-                    if let Some(p) = &printer {
-                        p.show(node)?;
-                    } else {
-                        println!(
-                            "[{}] **{}** - {}",
-                            node.id, node.raw_title, node.description
-                        );
-                    }
+                    // compute inbound refs
                     let mut inbound = Vec::new();
                     for n in &mm.nodes {
                         if n.references.contains(&id) {
                             inbound.push(n.id);
                         }
                     }
-                    if !inbound.is_empty() {
-                        eprintln!("Referred to by: {:?}", inbound);
+
+                    if let Some(p) = &printer {
+                        p.show(node, &inbound, &node.references)?;
+                    } else {
+                        println!(
+                            "[{}] **{}** - {}",
+                            node.id, node.raw_title, node.description
+                        );
+                        if !inbound.is_empty() {
+                            eprintln!("Referred to by: {:?}", inbound);
+                        }
                     }
                 }
             }

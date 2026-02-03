@@ -2,7 +2,7 @@ use anyhow::Result;
 use pretty_console::Console;
 
 pub trait Printer {
-    fn show(&self, node: &mindmap_cli::Node) -> Result<()>;
+    fn show(&self, node: &mindmap_cli::Node, inbound: &[u32], outbound: &[u32]) -> Result<()>;
     fn list(&self, lines: &[String]) -> Result<()>;
     fn refs(&self, lines: &[String]) -> Result<()>;
     fn links(&self, id: u32, links: &[u32]) -> Result<()>;
@@ -19,20 +19,32 @@ impl PrettyPrinter {
 }
 
 impl Printer for PrettyPrinter {
-    fn show(&self, node: &mindmap_cli::Node) -> Result<()> {
-        let heading = format!(
-            "[{}] **{}** - {}",
-            node.id, node.raw_title, node.description
-        );
-        // Use bold for heading
-        Console::new(&heading).bold().println();
+    fn show(&self, node: &mindmap_cli::Node, inbound: &[u32], outbound: &[u32]) -> Result<()> {
+        // ID in green (no newline)
+        Console::new(&format!("[{}] ", node.id)).green().print();
+        // Title bold (uncolored) on same line
+        Console::new(&node.raw_title).bold().println();
+
+        // Description on new line
+        Console::new(&node.description).println();
+
+        // Incoming references in blue
+        if !inbound.is_empty() {
+            Console::new("Incoming:").blue().print();
+            Console::new(&format!(" {:?}", inbound)).blue().println();
+        }
+
+        // Outgoing references in magenta
+        if !outbound.is_empty() {
+            Console::new("Outgoing:").magenta().print();
+            Console::new(&format!(" {:?}", outbound)).magenta().println();
+        }
+
         Ok(())
     }
 
     fn list(&self, lines: &[String]) -> Result<()> {
-        let mut i = 0usize;
         for line in lines {
-            i += 1;
             Console::new(line).println();
         }
         Ok(())
@@ -80,11 +92,15 @@ impl PlainPrinter {
 }
 
 impl Printer for PlainPrinter {
-    fn show(&self, node: &mindmap_cli::Node) -> Result<()> {
-        println!(
-            "[{}] **{}** - {}",
-            node.id, node.raw_title, node.description
-        );
+    fn show(&self, node: &mindmap_cli::Node, inbound: &[u32], outbound: &[u32]) -> Result<()> {
+        println!("[{}] {}", node.id, node.raw_title);
+        println!("{}", node.description);
+        if !inbound.is_empty() {
+            println!("Incoming: {:?}", inbound);
+        }
+        if !outbound.is_empty() {
+            println!("Outgoing: {:?}", outbound);
+        }
         Ok(())
     }
 
