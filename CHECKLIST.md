@@ -83,6 +83,14 @@ Phase 4 — Edit & maintain
     - Append "(verify YYYY-MM-DD)" to description if not present (use chrono for date).
     - Update mm.lines and save.
 
+18. Implement put & patch (HTTP semantics)
+    - put <id> --line "[id] **TYPE: Title** - desc [N]"  # full-line replace, id must match
+    - patch <id> [--type TYPE] [--title TITLE] [--desc DESC] [--strict]
+      - partial update: only provided fields are changed
+    - Validation: id cannot change, single-line format enforced, references parsed and updated
+    - Strict mode: if enabled, fail when references point to missing IDs
+    - Acceptance: unit & integration tests verify put and patch behaviors.
+
 Phase 5 — Lint / Safety (implemented)
 18. Implement cmd_lint (done)
     - Checks implemented:

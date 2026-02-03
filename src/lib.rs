@@ -55,7 +55,7 @@ impl Mindmap {
                 };
 
                 if by_id.contains_key(&id) {
-                    eprintln!("Warning: duplicate node [{}] at line {}", id, i + 1);
+                    eprintln!("Warning: duplicate node id {} at line {}", id, i + 1);
                 }
                 by_id.insert(id, nodes.len());
                 nodes.push(node);
@@ -99,12 +99,35 @@ impl Mindmap {
 
 // Command helpers
 
+pub fn parse_node_line(line: &str, line_index: usize) -> Result<Node> {
+    let re = Regex::new(r#"^\[(\d+)\] \*\*(.+?)\*\* - (.*)$"#)?;
+    let ref_re = Regex::new(r#"\[(\d+)\]"#)?;
+    let caps = re
+        .captures(line)
+        .ok_or_else(|| anyhow::anyhow!("Line does not match node format"))?;
+    let id: u32 = caps[1].parse()?;
+    let raw_title = caps[2].to_string();
+    let description = caps[3].to_string();
+    let mut references = Vec::new();
+    for rcaps in ref_re.captures_iter(&description) {
+        if let Ok(rid) = rcaps[1].parse::<u32>() {
+            if rid != id {
+                references.push(rid);
+            }
+        }
+    }
+    Ok(Node {
+        id,
+        raw_title,
+        description,
+        references,
+        line_index,
+    })
+}
+
 pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
     if let Some(node) = mm.get_node(id) {
-        let mut out = format!(
-            "[{}] **{}** - {}",
-            node.id, node.raw_title, node.description
-        );
+        let mut out = format!("[{}] **{}** - {}", node.id, node.raw_title, node.description);
 
         // inbound refs
         let mut inbound = Vec::new();
@@ -118,7 +141,7 @@ pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
         }
         out
     } else {
-        format!("Node [{}] not found", id)
+        format!("Node {} not found", id)
     }
 }
 
@@ -138,10 +161,7 @@ pub fn cmd_list(mm: &Mindmap, type_filter: Option<&str>, grep: Option<&str>) -> 
                 continue;
             }
         }
-        res.push(format!(
-            "[{}] **{}** - {}",
-            n.id, n.raw_title, n.description
-        ));
+        res.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.description));
     }
     res
 }
@@ -150,10 +170,7 @@ pub fn cmd_refs(mm: &Mindmap, id: u32) -> Vec<String> {
     let mut out = Vec::new();
     for n in &mm.nodes {
         if n.references.contains(&id) {
-            out.push(format!(
-                "[{}] **{}** - {}",
-                n.id, n.raw_title, n.description
-            ));
+            out.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.description));
         }
     }
     out
@@ -169,10 +186,7 @@ pub fn cmd_search(mm: &Mindmap, query: &str) -> Vec<String> {
     for n in &mm.nodes {
         if n.raw_title.to_lowercase().contains(&qlc) || n.description.to_lowercase().contains(&qlc)
         {
-            out.push(format!(
-                "[{}] **{}** - {}",
-                n.id, n.raw_title, n.description
-            ));
+            out.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.description));
         }
     }
     out
@@ -213,22 +227,16 @@ pub fn cmd_deprecate(mm: &mut Mindmap, id: u32, to: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node [{}] not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
 
     if !mm.by_id.contains_key(&to) {
-        eprintln!(
-            "Warning: target node [{}] does not exist (still updating title)",
-            to
-        );
+        eprintln!("Warning: target node {} does not exist (still updating title)", to);
     }
 
     let node = &mut mm.nodes[idx];
     if !node.raw_title.starts_with("[DEPRECATED") {
         node.raw_title = format!("[DEPRECATED → {}] {}", to, node.raw_title);
-        mm.lines[node.line_index] = format!(
-            "[{}] **{}** - {}",
-            node.id, node.raw_title, node.description
-        );
+        mm.lines[node.line_index] = format!("[{}] **{}** - {}", node.id, node.raw_title, node.description);
     }
 
     Ok(())
@@ -238,7 +246,7 @@ pub fn cmd_verify(mm: &mut Mindmap, id: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node [{}] not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
     let node = &mut mm.nodes[idx];
 
     let tag = format!("(verify {})", chrono::Local::now().format("%Y-%m-%d"));
@@ -248,10 +256,7 @@ pub fn cmd_verify(mm: &mut Mindmap, id: u32) -> Result<()> {
         } else {
             node.description = format!("{} {}", node.description, tag);
         }
-        mm.lines[node.line_index] = format!(
-            "[{}] **{}** - {}",
-            node.id, node.raw_title, node.description
-        );
+        mm.lines[node.line_index] = format!("[{}] **{}** - {}", node.id, node.raw_title, node.description);
     }
     Ok(())
 }
@@ -260,18 +265,13 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!("Node [{}] not found", id))?;
+        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
     let node = &mm.nodes[idx];
 
     // create temp file with the single node line
-    let mut tmp =
-        tempfile::NamedTempFile::new().with_context(|| "Failed to create temp file for editing")?;
+    let mut tmp = tempfile::NamedTempFile::new().with_context(|| "Failed to create temp file for editing")?;
     use std::io::Write;
-    writeln!(
-        tmp,
-        "[{}] **{}** - {}",
-        node.id, node.raw_title, node.description
-    )?;
+    writeln!(tmp, "[{}] **{}** - {}", node.id, node.raw_title, node.description)?;
     tmp.flush()?;
 
     // launch editor
@@ -320,30 +320,94 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn parse_node_line(line: &str, line_index: usize) -> Result<Node> {
-    let re = Regex::new(r#"^\[(\d+)\] \*\*(.+?)\*\* - (.*)$"#)?;
-    let ref_re = Regex::new(r#"\[(\d+)\]"#)?;
-    let caps = re
-        .captures(line)
-        .ok_or_else(|| anyhow::anyhow!("Line does not match node format"))?;
-    let id: u32 = caps[1].parse()?;
-    let raw_title = caps[2].to_string();
-    let description = caps[3].to_string();
-    let mut references = Vec::new();
-    for rcaps in ref_re.captures_iter(&description) {
-        if let Ok(rid) = rcaps[1].parse::<u32>() {
-            if rid != id {
-                references.push(rid);
+pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()> {
+    // full-line replace: parse provided line and enforce same id
+    let idx = *mm
+        .by_id
+        .get(&id)
+        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+
+    let parsed = parse_node_line(line, mm.nodes[idx].line_index)?;
+    if parsed.id != id {
+        return Err(anyhow::anyhow!("PUT line id does not match target id"));
+    }
+
+    // strict check for references
+    if strict {
+        for rid in &parsed.references {
+            if !mm.by_id.contains_key(rid) {
+                return Err(anyhow::anyhow!(format!("PUT strict: reference to missing node {}", rid)));
             }
         }
     }
-    Ok(Node {
-        id,
-        raw_title,
-        description,
-        references,
-        line_index,
-    })
+
+    // apply
+    mm.lines[mm.nodes[idx].line_index] = line.to_string();
+    let node_mut = &mut mm.nodes[idx];
+    node_mut.raw_title = parsed.raw_title;
+    node_mut.description = parsed.description;
+    node_mut.references = parsed.references;
+
+    Ok(())
+}
+
+pub fn cmd_patch(
+    mm: &mut Mindmap,
+    id: u32,
+    typ: Option<&str>,
+    title: Option<&str>,
+    desc: Option<&str>,
+    strict: bool,
+) -> Result<()> {
+    let idx = *mm
+        .by_id
+        .get(&id)
+        .ok_or_else(|| anyhow::anyhow!("Node {} not found", id))?;
+    let node = &mm.nodes[idx];
+
+    // split existing raw_title into optional type and title
+    let mut existing_type: Option<&str> = None;
+    let mut existing_title = node.raw_title.as_str();
+    if let Some(pos) = node.raw_title.find(':') {
+        existing_type = Some(node.raw_title[..pos].trim());
+        existing_title = node.raw_title[pos + 1..].trim();
+    }
+
+    let new_type = typ.unwrap_or(existing_type.unwrap_or(""));
+    let new_title = title.unwrap_or(existing_title);
+    let new_desc = desc.unwrap_or(&node.description);
+
+    // build raw title: if type is empty, omit prefix
+    let new_raw_title = if new_type.is_empty() {
+        new_title.to_string()
+    } else {
+        format!("{}: {}", new_type, new_title)
+    };
+
+    let new_line = format!("[{}] **{}** - {}", id, new_raw_title, new_desc);
+
+    // validate
+    let parsed = parse_node_line(&new_line, node.line_index)?;
+    if parsed.id != id {
+        return Err(anyhow::anyhow!("Patch resulted in different id"));
+    }
+
+    if strict {
+        for rid in &parsed.references {
+            if !mm.by_id.contains_key(rid) {
+                return Err(anyhow::anyhow!(format!("PATCH strict: reference to missing node {}", rid)));
+            }
+        }
+    }
+
+    // apply
+    mm.lines[node.line_index] = new_line;
+    let node_mut = &mut mm.nodes[idx];
+    node_mut.raw_title = parsed.raw_title;
+    node_mut.description = parsed.description;
+    node_mut.references = parsed.references;
+
+    Ok(())
 }
 
 pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
@@ -375,10 +439,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     }
     for (id, locations) in &id_map {
         if locations.len() > 1 {
-            warnings.push(format!(
-                "Duplicate ID: node [{}] appears on lines {:?}",
-                id, locations
-            ));
+            warnings.push(format!("Duplicate ID: node {} appears on lines {:?}", id, locations));
         }
     }
 
@@ -386,10 +447,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     for n in &mm.nodes {
         for rid in &n.references {
             if !mm.by_id.contains_key(rid) {
-                warnings.push(format!(
-                    "Missing ref: node [{}] references missing node [{}]",
-                    n.id, rid
-                ));
+                warnings.push(format!("Missing ref: node {} references missing node {}", n.id, rid));
             }
         }
     }
@@ -411,7 +469,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
         let out = n.references.len();
         let title_up = n.raw_title.to_uppercase();
         if inc == 0 && out == 0 && !title_up.starts_with("META") {
-            warnings.push(format!("Orphan: node [{}] appears to be orphan", n.id));
+            warnings.push(format!("Orphan: node {} appears to be orphan", n.id));
         }
     }
 
@@ -431,9 +489,7 @@ mod tests {
     fn test_parse_nodes() -> Result<()> {
         let temp = assert_fs::TempDir::new()?;
         let file = temp.child("MINDMAP.md");
-        file.write_str(
-            "Header line\n[1] **AE: A** - refers to [2]\nSome note\n[2] **AE: B** - base\n",
-        )?;
+        file.write_str("Header line\n[1] **AE: A** - refers to [2]\nSome note\n[2] **AE: B** - base\n")?;
 
         let mm = Mindmap::load(file.path().to_path_buf())?;
         assert_eq!(mm.nodes.len(), 2);
@@ -487,6 +543,27 @@ mod tests {
         assert!(joined.contains("Syntax"));
         assert!(joined.contains("Duplicate ID"));
         assert!(joined.contains("Orphan"));
+
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_put_and_patch_basic() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: One** - first\n[2] **AE: Two** - second\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        // patch title only for node 1
+        cmd_patch(&mut mm, 1, Some("AE"), Some("OneNew"), None, false)?;
+        assert_eq!(mm.get_node(1).unwrap().raw_title, "AE: OneNew");
+
+        // put full line for node 2
+        let new_line = "[2] **DR: Replaced** - replaced desc [1]";
+        cmd_put(&mut mm, 2, new_line, false)?;
+        assert_eq!(mm.get_node(2).unwrap().raw_title, "DR: Replaced");
+        assert_eq!(mm.get_node(2).unwrap().references, vec![1]);
 
         temp.close()?;
         Ok(())

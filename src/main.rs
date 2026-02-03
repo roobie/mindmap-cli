@@ -55,6 +55,28 @@ enum Commands {
     /// Edit a node with $EDITOR
     Edit { id: u32 },
 
+    /// Patch (partial update) a node: --type, --title, --desc
+    Patch {
+        id: u32,
+        #[arg(long)]
+        r#type: Option<String>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        desc: Option<String>,
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Put (full-line replace) a node: --line
+    Put {
+        id: u32,
+        #[arg(long)]
+        line: String,
+        #[arg(long)]
+        strict: bool,
+    },
+
     /// Mark a node as needing verification (append verify tag)
     Verify { id: u32 },
 
@@ -110,6 +132,23 @@ fn main() -> anyhow::Result<()> {
             mindmap_cli::cmd_edit(&mut mm, id, &editor)?;
             mm.save()?;
             println!("Edited node [{}]", id);
+        }
+        Commands::Patch { id, r#type, title, desc, strict } => {
+            mindmap_cli::cmd_patch(
+                &mut mm,
+                id,
+                r#type.as_deref(),
+                title.as_deref(),
+                desc.as_deref(),
+                strict,
+            )?;
+            mm.save()?;
+            println!("Patched node [{}]", id);
+        }
+        Commands::Put { id, line, strict } => {
+            mindmap_cli::cmd_put(&mut mm, id, &line, strict)?;
+            mm.save()?;
+            println!("Put node [{}]", id);
         }
         Commands::Verify { id } => {
             mindmap_cli::cmd_verify(&mut mm, id)?;

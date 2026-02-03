@@ -32,7 +32,7 @@
 
 [10] **Project purpose** - Provide a robust and useful CLI interface for interacting with MINDMAP files (just like this one.) - See design document at [DESIGN](./DESIGN.md). Make sure to keep both this MINDMAP and the DESIGN document updated as implementation goes along.
 
-[15] **AE: mindmap-cli** - v0 implementation started; added CHECKLIST.md; implemented Rust skeleton (parser + CLI) and verified build succeeds; commands implemented: show,list,search,refs,links,add,deprecate,verify,lint; added atomic save and edit command (updated 2026-02-03)
+[15] **AE: mindmap-cli** - v0 implementation started; added CHECKLIST.md; implemented Rust skeleton (parser + CLI) and verified build succeeds; commands implemented: show,list,search,refs,links,add,deprecate,verify,lint; added atomic save, edit command, put and patch (updated 2026-02-03)
 
 [16] **TODO: v0 phases** - Follow CHECKLIST.md: Phase1 parser, Phase2 commands, Phase3 navigation, Phase4 edit, Phase5 lint, tests (integration tests added 2026-02-03); CI workflow added (updated 2026-02-03)
 

@@ -104,3 +104,36 @@ fn integration_edit_change_id_fails() -> Result<(), Box<dyn std::error::Error>> 
     temp.close()?;
     Ok(())
 }
+
+#[test]
+fn integration_patch_and_put() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    let file = temp.child("MINDMAP.md");
+    file.write_str("[1] **AE: Alpha** - a\n[2] **AE: Beta** - b\n")?;
+
+    // patch node 1 title
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.current_dir(temp.path())
+        .arg("patch")
+        .arg("1")
+        .arg("--title")
+        .arg("AlphaX");
+    cmd.assert().success().stdout(predicate::str::contains("Patched node [1]"));
+
+    // put full line for node 2
+    let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
+    cmd2.current_dir(temp.path())
+        .arg("put")
+        .arg("2")
+        .arg("--line")
+        .arg("[2] **DR: NewBeta** - newb [1]");
+    cmd2.assert().success().stdout(predicate::str::contains("Put node [2]"));
+
+    // verify file contents
+    let content = std::fs::read_to_string(file.path())?;
+    assert!(content.contains("AlphaX"));
+    assert!(content.contains("DR: NewBeta"));
+
+    temp.close()?;
+    Ok(())
+}
