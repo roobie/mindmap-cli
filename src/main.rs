@@ -199,8 +199,12 @@ fn main() -> anyhow::Result<()> {
                 let obj = serde_json::json!({"command": "list", "items": arr});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else {
-                for it in items {
-                    println!("{}", it);
+                if let Some(p) = &printer {
+                    p.list(&items)?;
+                } else {
+                    for it in items {
+                        println!("{}", it);
+                    }
                 }
             }
         }
@@ -210,8 +214,12 @@ fn main() -> anyhow::Result<()> {
                 let obj = serde_json::json!({"command": "refs", "items": items});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else {
-                for it in items {
-                    println!("{}", it);
+                if let Some(p) = &printer {
+                    p.refs(&items)?;
+                } else {
+                    for it in items {
+                        println!("{}", it);
+                    }
                 }
             }
         }
@@ -221,7 +229,11 @@ fn main() -> anyhow::Result<()> {
                     let obj = serde_json::json!({"command": "links", "id": id, "links": v});
                     println!("{}", serde_json::to_string_pretty(&obj)?);
                 } else {
-                    println!("Node [{}] references: {:?}", id, v);
+                    if let Some(p) = &printer {
+                        p.links(id, &v)?;
+                    } else {
+                        println!("Node [{}] references: {:?}", id, v);
+                    }
                 }
             }
             None => return Err(anyhow::anyhow!(format!("Node [{}] not found", id))),
@@ -232,8 +244,12 @@ fn main() -> anyhow::Result<()> {
                 let obj = serde_json::json!({"command": "search", "query": query, "items": items});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else {
-                for it in items {
-                    println!("{}", it);
+                if let Some(p) = &printer {
+                    p.search(&items)?;
+                } else {
+                    for it in items {
+                        println!("{}", it);
+                    }
                 }
             }
         }
@@ -347,8 +363,12 @@ fn main() -> anyhow::Result<()> {
                 let obj = serde_json::json!({"command": "orphans", "orphans": res});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else {
-                for r in res {
-                    eprintln!("{}", r);
+                if let Some(p) = &printer {
+                    p.orphans(&res)?;
+                } else {
+                    for r in res {
+                        eprintln!("{}", r);
+                    }
                 }
             }
         }
