@@ -1,6 +1,9 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+mod ui;
+use atty;
+
 #[derive(clap::ValueEnum, Clone)]
 enum OutputFormat {
     Default,
@@ -124,6 +127,25 @@ fn main() -> anyhow::Result<()> {
 
     let mut mm = mindmap_cli::Mindmap::load(path)?;
 
+    // determine whether to use pretty output (interactive + default format)
+    let interactive = atty::is(atty::Stream::Stdout);
+    let env_override = std::env::var("MINDMAP_PRETTY").ok();
+    let pretty_enabled = match env_override.as_deref() {
+        Some("0") => false,
+        Some("1") => true,
+        _ => interactive,
+    } && matches!(cli.output, OutputFormat::Default);
+
+    let printer: Option<Box<dyn ui::Printer>> = if matches!(cli.output, OutputFormat::Default) {
+        if pretty_enabled {
+            Some(Box::new(ui::PrettyPrinter::new()?))
+        } else {
+            Some(Box::new(ui::PlainPrinter::new()?))
+        }
+    } else {
+        None
+    };
+
     match cli.command {
         Commands::Show { id } => match mm.get_node(id) {
             Some(node) => {
@@ -140,7 +162,11 @@ fn main() -> anyhow::Result<()> {
                     });
                     println!("{}", serde_json::to_string_pretty(&obj)?);
                 } else {
-                    println!("[{}] **{}** - {}", node.id, node.raw_title, node.description);
+                    if let Some(p) = &printer {
+                        p.show(node)?;
+                    } else {
+                        println!("[{}] **{}** - {}", node.id, node.raw_title, node.description);
+                    }
                     let mut inbound = Vec::new();
                     for n in &mm.nodes {
                         if n.references.contains(&id) {
