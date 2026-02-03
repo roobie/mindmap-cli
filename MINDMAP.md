@@ -1,6 +1,6 @@
 # MINDMAP.md - Aisha AI DevOps and SRE Assistant
 
-[0] **🎯 PRIME DIRECTIVE FOR AI AGENTS:** This MINDMAP documents the Aisha codebase. Read nodes [1-9] for format rules, then [10-14] for project overview. Follow `[N]` references to navigate. **Always update this file as you work.**
+[0] **META: 🎯 PRIME DIRECTIVE FOR AI AGENTS:** - This MINDMAP documents the Aisha codebase. Read nodes [1-9] for format rules, then [10-14] for project overview. Follow `[N]` references to navigate. **Always update this file as you work.**
 
 [1] **META: Mind Map Format** - This is a graph-based documentation format where each node is exactly one line: `[N] **Title** - content with any number of [N] references`. The format is markdown-compatible, grep-able, and git-friendly [2][3][4]. Nodes enable atomic updates, instant search, and LLM-native citation syntax [5][6].
 
@@ -14,7 +14,7 @@
 
 [6] **META: Update Protocol** - **MANDATORY:** (1) Before work, grep for related nodes and read them [4], (2) After changes, update affected nodes immediately, (3) Add new nodes if concept is referenced 3+ times OR non-obvious from code, (4) For bugs create `**BUG:**` node with root cause + solution [3][7].
 
-[7] **META: Node Lifecycle Example** - Initial: `[15] **AE: LLM Client** - Uses OpenAI SDK [20][25]`. After change: `[15] **AE: LLM Client** - Uses OpenAI SDK, supports local models [20][25][31] (updated 2026-02-02)` [6][3].
+[7] **META: Node Lifecycle Example** - Initial: `[15] **AE: LLM Client** - Uses OpenAI SDK [20][25]`. After change: `[15] **AE: LLM Client** - Uses OpenAI SDK, supports local models [20][25][27] (updated 2026-02-02)` [6][3].
 
 [8] **META: Reality vs Mindmap** - **Critical:** If MINDMAP contradicts code, code is truth—update MINDMAP immediately [6]. This MINDMAP is an index, not a spec. Stale nodes are worse than missing nodes.
 
