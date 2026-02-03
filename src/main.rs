@@ -29,7 +29,8 @@ EXAMPLES:
 Notes:
   - Default file: ./MINDMAP.md (override with --file)
   - Use the EDITOR env var to control the editor used by 'edit'
-"#)]
+"#
+)]
 struct Cli {
     /// Path to MINDMAP file (defaults to ./MINDMAP.md)
     #[arg(global = true, short, long)]
@@ -111,7 +112,11 @@ enum Commands {
     Verify { id: u32 },
 
     /// Delete a node by ID; use --force to remove even if referenced
-    Delete { id: u32, #[arg(long)] force: bool },
+    Delete {
+        id: u32,
+        #[arg(long)]
+        force: bool,
+    },
 
     /// Lint the mindmap for basic issues
     Lint,
@@ -165,7 +170,10 @@ fn main() -> anyhow::Result<()> {
                     if let Some(p) = &printer {
                         p.show(node)?;
                     } else {
-                        println!("[{}] **{}** - {}", node.id, node.raw_title, node.description);
+                        println!(
+                            "[{}] **{}** - {}",
+                            node.id, node.raw_title, node.description
+                        );
                     }
                     let mut inbound = Vec::new();
                     for n in &mm.nodes {
@@ -183,7 +191,10 @@ fn main() -> anyhow::Result<()> {
         Commands::List { r#type, grep } => {
             let items = mindmap_cli::cmd_list(&mm, r#type.as_deref(), grep.as_deref());
             if matches!(cli.output, OutputFormat::Json) {
-                let arr: Vec<_> = items.into_iter().map(|line| serde_json::json!({"line": line})).collect();
+                let arr: Vec<_> = items
+                    .into_iter()
+                    .map(|line| serde_json::json!({"line": line}))
+                    .collect();
                 let obj = serde_json::json!({"command": "list", "items": arr});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else {
@@ -225,7 +236,11 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Add { r#type, title, desc } => {
+        Commands::Add {
+            r#type,
+            title,
+            desc,
+        } => {
             let id = mindmap_cli::cmd_add(&mut mm, &r#type, &title, &desc)?;
             mm.save()?;
             if matches!(cli.output, OutputFormat::Json) {
@@ -259,8 +274,21 @@ fn main() -> anyhow::Result<()> {
             }
             eprintln!("Edited node [{}]", id);
         }
-        Commands::Patch { id, r#type, title, desc, strict } => {
-            mindmap_cli::cmd_patch(&mut mm, id, r#type.as_deref(), title.as_deref(), desc.as_deref(), strict)?;
+        Commands::Patch {
+            id,
+            r#type,
+            title,
+            desc,
+            strict,
+        } => {
+            mindmap_cli::cmd_patch(
+                &mut mm,
+                id,
+                r#type.as_deref(),
+                title.as_deref(),
+                desc.as_deref(),
+                strict,
+            )?;
             mm.save()?;
             if matches!(cli.output, OutputFormat::Json) {
                 if let Some(node) = mm.get_node(id) {

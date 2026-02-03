@@ -53,3 +53,5 @@
 [26] **DR: PUT and PATCH semantics** - PUT = full-line replace (id must match); PATCH = partial update of type/title/desc; --strict fails on missing refs.
 [27] **DR: Output formats & JSON** - CLI supports --output json to emit structured data on stdout; informational messages and warnings go to stderr to keep stdout machine-actionable.
 [28] **DR: Delete semantics** - Delete blocks by default when referenced; use --force to delete and leave dangling refs (lint will report). No automatic cleanup by default.
+[29] **TODO: Read stdin** - The application should allow for switching to stdin mode by supplying the `-` arg, for applicable subcommands
+[30] **TODO: Add from $EDITOR** - If `add` is called without args, it should start EDITOR and add from that tmp file

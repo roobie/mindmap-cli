@@ -23,7 +23,10 @@ impl PrettyPrinter {
 
 impl Printer for PrettyPrinter {
     fn show(&self, node: &mindmap_cli::Node) -> Result<()> {
-        let heading = format!("[{}] **{}** - {}", node.id, node.raw_title, node.description);
+        let heading = format!(
+            "[{}] **{}** - {}",
+            node.id, node.raw_title, node.description
+        );
         // Use bold for heading
         Console::new(&heading).bold().println();
         Ok(())
@@ -81,7 +84,10 @@ impl PlainPrinter {
 
 impl Printer for PlainPrinter {
     fn show(&self, node: &mindmap_cli::Node) -> Result<()> {
-        println!("[{}] **{}** - {}", node.id, node.raw_title, node.description);
+        println!(
+            "[{}] **{}** - {}",
+            node.id, node.raw_title, node.description
+        );
         Ok(())
     }
 
