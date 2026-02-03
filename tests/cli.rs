@@ -22,7 +22,7 @@ fn integration_add_and_show() -> Result<(), Box<dyn std::error::Error>> {
         .arg("refers [1]");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Added node"));
+        .stderr(predicate::str::contains("Added node"));
 
     // show the new node (should be id 2)
     let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
@@ -61,7 +61,7 @@ fn integration_edit_flow() -> Result<(), Box<dyn std::error::Error>> {
         .arg("1");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Edited node [1]"));
+        .stderr(predicate::str::contains("Edited node [1]"));
 
     // check file contains edited title
     file.assert(predicate::str::contains("Edited"));
@@ -120,7 +120,7 @@ fn integration_patch_and_put() -> Result<(), Box<dyn std::error::Error>> {
         .arg("AlphaX");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Patched node [1]"));
+        .stderr(predicate::str::contains("Patched node [1]"));
 
     // put full line for node 2
     let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
@@ -131,7 +131,7 @@ fn integration_patch_and_put() -> Result<(), Box<dyn std::error::Error>> {
         .arg("[2] **DR: NewBeta** - newb [1]");
     cmd2.assert()
         .success()
-        .stdout(predicate::str::contains("Put node [2]"));
+        .stderr(predicate::str::contains("Put node [2]"));
 
     // verify file contents
     let content = std::fs::read_to_string(file.path())?;
@@ -156,8 +156,13 @@ fn integration_delete_flow() -> Result<(), Box<dyn std::error::Error>> {
 
     // delete with force -> should succeed
     let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
-    cmd2.current_dir(temp.path()).arg("delete").arg("2").arg("--force");
-    cmd2.assert().success().stdout(predicate::str::contains("Deleted node [2]"));
+    cmd2.current_dir(temp.path())
+        .arg("delete")
+        .arg("2")
+        .arg("--force");
+    cmd2.assert()
+        .success()
+        .stderr(predicate::str::contains("Deleted node [2]"));
 
     let content = std::fs::read_to_string(file.path())?;
     assert!(!content.contains("**AE: Two**"));
@@ -165,7 +170,9 @@ fn integration_delete_flow() -> Result<(), Box<dyn std::error::Error>> {
     // lint should now mention missing ref (dangling reference)
     let mut cmd3 = Command::cargo_bin("mindmap-cli")?;
     cmd3.current_dir(temp.path()).arg("lint");
-    cmd3.assert().success().stdout(predicate::str::contains("Missing ref"));
+    cmd3.assert()
+        .success()
+        .stderr(predicate::str::contains("Missing ref"));
 
     temp.close()?;
     Ok(())

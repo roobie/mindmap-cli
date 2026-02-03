@@ -1,5 +1,11 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
+
+#[derive(clap::ValueEnum, Clone)]
+enum OutputFormat {
+    Default,
+    Json,
+}
 
 #[derive(Parser)]
 #[command(name = "mindmap")]
@@ -20,12 +26,15 @@ EXAMPLES:
 Notes:
   - Default file: ./MINDMAP.md (override with --file)
   - Use the EDITOR env var to control the editor used by 'edit'
-"#
-)]
+"#)]
 struct Cli {
     /// Path to MINDMAP file (defaults to ./MINDMAP.md)
     #[arg(global = true, short, long)]
     file: Option<PathBuf>,
+
+    /// Output format: default (human) or json
+    #[arg(global = true, long, value_enum, default_value_t = OutputFormat::Default)]
+    output: OutputFormat,
 
     #[command(subcommand)]
     command: Commands,
@@ -113,84 +122,165 @@ fn main() -> anyhow::Result<()> {
     let mut mm = mindmap_cli::Mindmap::load(path)?;
 
     match cli.command {
-        Commands::Show { id } => println!("{}", mindmap_cli::cmd_show(&mm, id)),
+        Commands::Show { id } => match mm.get_node(id) {
+            Some(node) => {
+                if matches!(cli.output, OutputFormat::Json) {
+                    let obj = serde_json::json!({
+                        "command": "show",
+                        "node": {
+                            "id": node.id,
+                            "raw_title": node.raw_title,
+                            "description": node.description,
+                            "references": node.references,
+                            "line_index": node.line_index,
+                        }
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    println!("[{}] **{}** - {}", node.id, node.raw_title, node.description);
+                    let mut inbound = Vec::new();
+                    for n in &mm.nodes {
+                        if n.references.contains(&id) {
+                            inbound.push(n.id);
+                        }
+                    }
+                    if !inbound.is_empty() {
+                        eprintln!("Referred to by: {:?}", inbound);
+                    }
+                }
+            }
+            None => return Err(anyhow::anyhow!(format!("Node {} not found", id))),
+        },
         Commands::List { r#type, grep } => {
             let items = mindmap_cli::cmd_list(&mm, r#type.as_deref(), grep.as_deref());
-            for it in items {
-                println!("{}", it);
+            if matches!(cli.output, OutputFormat::Json) {
+                let arr: Vec<_> = items.into_iter().map(|line| serde_json::json!({"line": line})).collect();
+                let obj = serde_json::json!({"command": "list", "items": arr});
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                for it in items {
+                    println!("{}", it);
+                }
             }
         }
         Commands::Refs { id } => {
-            for it in mindmap_cli::cmd_refs(&mm, id) {
-                println!("{}", it);
+            let items = mindmap_cli::cmd_refs(&mm, id);
+            if matches!(cli.output, OutputFormat::Json) {
+                let obj = serde_json::json!({"command": "refs", "items": items});
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                for it in items {
+                    println!("{}", it);
+                }
             }
         }
         Commands::Links { id } => match mindmap_cli::cmd_links(&mm, id) {
-            Some(v) => println!("Node [{}] references: {:?}", id, v),
-            None => eprintln!("Node [{}] not found", id),
+            Some(v) => {
+                if matches!(cli.output, OutputFormat::Json) {
+                    let obj = serde_json::json!({"command": "links", "id": id, "links": v});
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    println!("Node [{}] references: {:?}", id, v);
+                }
+            }
+            None => return Err(anyhow::anyhow!(format!("Node [{}] not found", id))),
         },
         Commands::Search { query } => {
-            for it in mindmap_cli::cmd_search(&mm, &query) {
-                println!("{}", it);
+            let items = mindmap_cli::cmd_search(&mm, &query);
+            if matches!(cli.output, OutputFormat::Json) {
+                let obj = serde_json::json!({"command": "search", "query": query, "items": items});
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                for it in items {
+                    println!("{}", it);
+                }
             }
         }
-        Commands::Add {
-            r#type,
-            title,
-            desc,
-        } => {
+        Commands::Add { r#type, title, desc } => {
             let id = mindmap_cli::cmd_add(&mut mm, &r#type, &title, &desc)?;
             mm.save()?;
-            println!("Added node [{}]", id);
+            if matches!(cli.output, OutputFormat::Json) {
+                if let Some(node) = mm.get_node(id) {
+                    let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                }
+            }
+            eprintln!("Added node [{}]", id);
         }
         Commands::Deprecate { id, to } => {
             mindmap_cli::cmd_deprecate(&mut mm, id, to)?;
             mm.save()?;
-            println!("Deprecated node [{}] → [{}]", id, to);
+            if matches!(cli.output, OutputFormat::Json) {
+                if let Some(node) = mm.get_node(id) {
+                    let obj = serde_json::json!({"command": "deprecate", "node": {"id": node.id, "raw_title": node.raw_title}});
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                }
+            }
+            eprintln!("Deprecated node [{}] → [{}]", id, to);
         }
         Commands::Edit { id } => {
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
             mindmap_cli::cmd_edit(&mut mm, id, &editor)?;
             mm.save()?;
-            println!("Edited node [{}]", id);
+            if matches!(cli.output, OutputFormat::Json) {
+                if let Some(node) = mm.get_node(id) {
+                    let obj = serde_json::json!({"command": "edit", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                }
+            }
+            eprintln!("Edited node [{}]", id);
         }
-        Commands::Patch {
-            id,
-            r#type,
-            title,
-            desc,
-            strict,
-        } => {
-            mindmap_cli::cmd_patch(
-                &mut mm,
-                id,
-                r#type.as_deref(),
-                title.as_deref(),
-                desc.as_deref(),
-                strict,
-            )?;
+        Commands::Patch { id, r#type, title, desc, strict } => {
+            mindmap_cli::cmd_patch(&mut mm, id, r#type.as_deref(), title.as_deref(), desc.as_deref(), strict)?;
             mm.save()?;
-            println!("Patched node [{}]", id);
+            if matches!(cli.output, OutputFormat::Json) {
+                if let Some(node) = mm.get_node(id) {
+                    let obj = serde_json::json!({"command": "patch", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                }
+            }
+            eprintln!("Patched node [{}]", id);
         }
         Commands::Put { id, line, strict } => {
             mindmap_cli::cmd_put(&mut mm, id, &line, strict)?;
             mm.save()?;
-            println!("Put node [{}]", id);
+            if matches!(cli.output, OutputFormat::Json) {
+                if let Some(node) = mm.get_node(id) {
+                    let obj = serde_json::json!({"command": "put", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                }
+            }
+            eprintln!("Put node [{}]", id);
         }
         Commands::Verify { id } => {
             mindmap_cli::cmd_verify(&mut mm, id)?;
             mm.save()?;
-            println!("Marked node [{}] for verification", id);
+            if matches!(cli.output, OutputFormat::Json) {
+                if let Some(node) = mm.get_node(id) {
+                    let obj = serde_json::json!({"command": "verify", "node": {"id": node.id, "description": node.description}});
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                }
+            }
+            eprintln!("Marked node [{}] for verification", id);
         }
         Commands::Delete { id, force } => {
             mindmap_cli::cmd_delete(&mut mm, id, force)?;
             mm.save()?;
-            println!("Deleted node [{}]", id);
+            if matches!(cli.output, OutputFormat::Json) {
+                let obj = serde_json::json!({"command": "delete", "deleted": id});
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            }
+            eprintln!("Deleted node [{}]", id);
         }
         Commands::Lint => {
             let res = mindmap_cli::cmd_lint(&mm)?;
-            for r in res {
-                println!("{}", r);
+            if matches!(cli.output, OutputFormat::Json) {
+                let obj = serde_json::json!({"command": "lint", "warnings": res});
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                for r in res {
+                    eprintln!("{}", r);
+                }
             }
         }
     }
