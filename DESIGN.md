@@ -39,7 +39,11 @@ Lint / Safety (implemented)
   - Lines that look like nodes but do not match the node regex (syntax errors)
   - Duplicate IDs and their line numbers
   - Missing references
-  - Orphan nodes (no incoming and no outgoing refs) — excludes nodes whose title starts with "META"
+
+Orphans (separate command)
+- Orphan detection is available as a dedicated command:
+  - `mindmap orphans` — lists nodes that have no incoming and no outgoing references (excluding nodes whose title starts with "META").
+  - Rationale: keep `lint` focused on format and reference validity; make orphan listing explicit so it can be used selectively.
 
 
 2. Data model & invariants (DRs)
@@ -72,6 +76,7 @@ Subcommands (implemented):
 - put <id> --line "..." [--strict]
 - deprecate <id> --to <id>
 - verify <id>
+- orphans
 - lint
 
 Help and examples are embedded in the CLI (long_about / after_help) so `mindmap --help` includes concise examples and notes about $EDITOR and default file.

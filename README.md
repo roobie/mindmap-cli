@@ -29,7 +29,19 @@ mindmap-cli delete 12 --force
 
 # lint the file for syntax / ref issues
 mindmap-cli lint
-```
+
+# list orphan nodes (no incoming and no outgoing references)
+mindmap-cli orphans
+
+# Examples: piping JSON output and separating stderr (meta) from stdout (data)
+
+```bash
+# show node 12 as JSON and extract the node id
+mindmap-cli --output json show 12 | jq '.node.id'
+
+# show node 12 while capturing meta on stderr (Bash example)
+mindmap-cli show 12 1>data.json 2>meta.log
+``````
 
 For more details run `mindmap-cli --help` or see the DESIGN.md and CHECKLIST.md files in this repository.
 
