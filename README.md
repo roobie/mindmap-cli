@@ -33,3 +33,17 @@ mindmap-cli lint
 
 For more details run `mindmap-cli --help` or see the DESIGN.md and CHECKLIST.md files in this repository.
 
+Output formats
+
+By default the CLI prints human-readable output. Use the global flag `--output json` to emit structured JSON to stdout for scripting. Informational messages, confirmations, and warnings are written to stderr so stdout remains machine-actionable when you pipe the output.
+
+Example (pipe JSON to jq):
+
+```bash
+# show node 12 as JSON and extract the node id
+mindmap-cli --output json show 12 | jq '.node.id'
+
+# list nodes as JSON
+mindmap-cli --output json list --type AE | jq '.items'
+```
+
