@@ -22,6 +22,10 @@
 
 ---
 
+[12] **WF: Development basics** - Make sure to run `mise run fmt` after each edit, so that the rust source code is ensured to be canonically formatted
+
+[13] **META: Development environment** - managed by `mise` (see mise.toml for versions and available tasks); common tasks: `mise test`, `mise run fmt`, `mise run lint`. Platform is Cargo/rust.
+
 [14] **Core priorities** - Security > Correctness > Robustness > Maintainability > Speed > Visuals.
 
 ---

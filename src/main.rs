@@ -73,21 +73,29 @@ fn main() -> anyhow::Result<()> {
         Commands::Show { id } => println!("{}", mindmap_cli::cmd_show(&mm, id)),
         Commands::List { r#type, grep } => {
             let items = mindmap_cli::cmd_list(&mm, r#type.as_deref(), grep.as_deref());
-            for it in items { println!("{}", it); }
-        }
-        Commands::Refs { id } => {
-            for it in mindmap_cli::cmd_refs(&mm, id) { println!("{}", it); }
-        }
-        Commands::Links { id } => {
-            match mindmap_cli::cmd_links(&mm, id) {
-                Some(v) => println!("Node {} references: {:?}", id, v),
-                None => eprintln!("Node {} not found", id),
+            for it in items {
+                println!("{}", it);
             }
         }
-        Commands::Search { query } => {
-            for it in mindmap_cli::cmd_search(&mm, &query) { println!("{}", it); }
+        Commands::Refs { id } => {
+            for it in mindmap_cli::cmd_refs(&mm, id) {
+                println!("{}", it);
+            }
         }
-        Commands::Add { r#type, title, desc } => {
+        Commands::Links { id } => match mindmap_cli::cmd_links(&mm, id) {
+            Some(v) => println!("Node {} references: {:?}", id, v),
+            None => eprintln!("Node {} not found", id),
+        },
+        Commands::Search { query } => {
+            for it in mindmap_cli::cmd_search(&mm, &query) {
+                println!("{}", it);
+            }
+        }
+        Commands::Add {
+            r#type,
+            title,
+            desc,
+        } => {
             let id = mindmap_cli::cmd_add(&mut mm, &r#type, &title, &desc)?;
             mm.save()?;
             println!("Added node [{}]", id);
@@ -110,7 +118,9 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Lint => {
             let res = mindmap_cli::cmd_lint(&mm)?;
-            for r in res { println!("{}", r); }
+            for r in res {
+                println!("{}", r);
+            }
         }
     }
 

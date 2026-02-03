@@ -2,6 +2,10 @@
 rust = "1.93"
 watchexec = "2"
 
+[tasks.invoke]
+description = "Execute the application"
+run = "cargo run --"
+
 [tasks.fmt]
 description = "Format rust code"
 run = "cargo fmt --all"

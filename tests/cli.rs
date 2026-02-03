@@ -20,14 +20,16 @@ fn integration_add_and_show() -> Result<(), Box<dyn std::error::Error>> {
         .arg("New")
         .arg("--desc")
         .arg("refers [1]");
-    cmd.assert().success().stdout(predicate::str::contains("Added node"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Added node"));
 
     // show the new node (should be id 2)
     let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
-    cmd2.current_dir(temp.path())
-        .arg("show")
-        .arg("2");
-    cmd2.assert().success().stdout(predicate::str::contains("New"));
+    cmd2.current_dir(temp.path()).arg("show").arg("2");
+    cmd2.assert()
+        .success()
+        .stdout(predicate::str::contains("New"));
 
     temp.close()?;
     Ok(())
@@ -41,7 +43,8 @@ fn integration_edit_flow() -> Result<(), Box<dyn std::error::Error>> {
 
     // create an editor script that overwrites the file passed
     let editor = temp.child("editor.sh");
-    editor.write_str("#!/bin/sh\ncat >\"$1\" <<'EOF'\n[1] **AE: Edited** - edited desc [1]\nEOF\n")?;
+    editor
+        .write_str("#!/bin/sh\ncat >\"$1\" <<'EOF'\n[1] **AE: Edited** - edited desc [1]\nEOF\n")?;
     // make it executable
     #[cfg(unix)]
     {
@@ -56,7 +59,9 @@ fn integration_edit_flow() -> Result<(), Box<dyn std::error::Error>> {
         .env("EDITOR", editor.path())
         .arg("edit")
         .arg("1");
-    cmd.assert().success().stdout(predicate::str::contains("Edited node 1"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Edited node 1"));
 
     // check file contains edited title
     file.assert(predicate::str::contains("Edited"));
@@ -73,7 +78,8 @@ fn integration_edit_change_id_fails() -> Result<(), Box<dyn std::error::Error>> 
 
     // editor writes a different ID
     let editor = temp.child("bad_editor.sh");
-    editor.write_str("#!/bin/sh\ncat >\"$1\" <<'EOF'\n[2] **AE: Bad** - changed id\nEOF\nexit 0\n")?;
+    editor
+        .write_str("#!/bin/sh\ncat >\"$1\" <<'EOF'\n[2] **AE: Bad** - changed id\nEOF\nexit 0\n")?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
