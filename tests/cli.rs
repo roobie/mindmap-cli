@@ -141,3 +141,32 @@ fn integration_patch_and_put() -> Result<(), Box<dyn std::error::Error>> {
     temp.close()?;
     Ok(())
 }
+
+#[test]
+fn integration_delete_flow() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    let file = temp.child("MINDMAP.md");
+    // node1 references node2
+    file.write_str("[1] **AE: One** - refers [2]\n[2] **AE: Two** - second\n")?;
+
+    // attempt delete without force -> should fail
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.current_dir(temp.path()).arg("delete").arg("2");
+    cmd.assert().failure();
+
+    // delete with force -> should succeed
+    let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
+    cmd2.current_dir(temp.path()).arg("delete").arg("2").arg("--force");
+    cmd2.assert().success().stdout(predicate::str::contains("Deleted node [2]"));
+
+    let content = std::fs::read_to_string(file.path())?;
+    assert!(!content.contains("**AE: Two**"));
+
+    // lint should now mention missing ref (dangling reference)
+    let mut cmd3 = Command::cargo_bin("mindmap-cli")?;
+    cmd3.current_dir(temp.path()).arg("lint");
+    cmd3.assert().success().stdout(predicate::str::contains("Missing ref"));
+
+    temp.close()?;
+    Ok(())
+}

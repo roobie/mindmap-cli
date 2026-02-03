@@ -24,6 +24,9 @@ mindmap-cli patch 12 --title "AuthSvc" --desc "Updated desc"
 # full-line replace (must keep same id)
 mindmap-cli put 12 --line "[12] **AE: AuthSvc** - Updated desc [10]"
 
+# delete a node (use --force to remove even if referenced)
+mindmap-cli delete 12 --force
+
 # lint the file for syntax / ref issues
 mindmap-cli lint
 ```

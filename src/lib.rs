@@ -647,4 +647,30 @@ mod tests {
         temp.close()?;
         Ok(())
     }
+
+    #[test]
+    fn test_delete_behaviour() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        // node1 references node2
+        file.write_str("[1] **AE: One** - refers [2]\n[2] **AE: Two** - second\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        // attempt to delete node 2 without force -> should error
+        let err = cmd_delete(&mut mm, 2, false).unwrap_err();
+        assert!(format!("{}", err).contains("referenced"));
+
+        // delete with force -> succeeds
+        cmd_delete(&mut mm, 2, true)?;
+        assert!(mm.get_node(2).is_none());
+        // lines should no longer contain node 2
+        assert!(!mm.lines.iter().any(|l| l.contains("**AE: Two**")));
+
+        // node1 still has dangling reference (we do not rewrite other nodes automatically)
+        let n1 = mm.get_node(1).unwrap();
+        assert!(n1.references.contains(&2));
+
+        temp.close()?;
+        Ok(())
+    }
 }
