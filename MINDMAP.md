@@ -22,7 +22,7 @@
 
 ---
 
-[10] **WF: Dogfooding** - IMPORTANT: use `mindmap-cli` to update this file. The application can be invoked by `mise invoke ...` where `...` are arguments to this application. Start by executing `mise invoke help`
+[11] **WF: Dogfooding** - IMPORTANT: use the [`mindmap-cli`](./target/debug/mindmap-cli) to update this file. Run `target/debug/mindmap-cli help` to learn how.
 
 [12] **WF: Development basics** - Make sure to run `mise run fmt` after each edit, so that the rust source code is ensured to be canonically formatted
 
@@ -34,7 +34,7 @@
 
 [10] **Project purpose** - Provide a robust and useful CLI interface for interacting with MINDMAP files (just like this one.) - See design document at [DESIGN](./DESIGN.md). Make sure to keep both this MINDMAP and the DESIGN document updated as implementation goes along.
 
-[15] **AE: mindmap-cli** - v0 implementation started; added CHECKLIST.md; implemented Rust skeleton (parser + CLI) and verified build succeeds; commands implemented: show,list,search,refs,links,add,deprecate,verify,lint; added atomic save, edit command, put and patch (updated 2026-02-03)
+[15] **AE: mindmap-cli** - v0 implementation: added CHECKLIST.md; implemented Rust skeleton (parser + CLI); commands: show,list,search,refs,links,add,deprecate,verify,lint,edit,put,patch,delete; added atomic save, edit command, put/patch, delete, --output json (updated 2026-02-03)
 
 [16] **TODO: v0 phases** - Follow CHECKLIST.md: Phase1 parser, Phase2 commands, Phase3 navigation, Phase4 edit, Phase5 lint, tests (integration tests added 2026-02-03); CI workflow added (updated 2026-02-03)
 
@@ -51,3 +51,5 @@
 [24] **DR: Atomic save strategy** - Writes are atomic: write to temp file in same dir and persist/rename to replace original to avoid partial writes.
 [25] **DR: Editor single-line validation** - Edit flow provides a single-line temp file; editor must produce exactly one valid node line or the edit is aborted to prevent file corruption.
 [26] **DR: PUT and PATCH semantics** - PUT = full-line replace (id must match); PATCH = partial update of type/title/desc; --strict fails on missing refs.
+[27] **DR: Output formats & JSON** - CLI supports --output json to emit structured data on stdout; informational messages and warnings go to stderr to keep stdout machine-actionable.
+[28] **DR: Delete semantics** - Delete blocks by default when referenced; use --force to delete and leave dangling refs (lint will report). No automatic cleanup by default.
