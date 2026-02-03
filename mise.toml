@@ -21,7 +21,7 @@ run = "cargo clippy --all --fix"
 
 [tasks.build]
 description = "Build the project"
-depends = ["deps", "lint"]
+depends = ["lint"]
 run = "cargo build"
 
 [tasks.test]

@@ -4,7 +4,8 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "mindmap")]
 #[command(about = "CLI tool for working with MINDMAP files")]
-#[command(long_about = r#"mindmap-cli — small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
+#[command(
+    long_about = r#"mindmap-cli — small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
 One-node-per-line format: [N] **Title** - description with [N] references. IDs must be stable numeric values.
 
 EXAMPLES:
@@ -19,7 +20,8 @@ EXAMPLES:
 Notes:
   - Default file: ./MINDMAP.md (override with --file)
   - Use the EDITOR env var to control the editor used by 'edit'
-"#)]
+"#
+)]
 struct Cli {
     /// Path to MINDMAP file (defaults to ./MINDMAP.md)
     #[arg(global = true, short, long)]
