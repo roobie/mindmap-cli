@@ -22,7 +22,7 @@
 
 ---
 
-[11] **WF: Dogfooding** - IMPORTANT: use the [`mindmap-cli`](./target/debug/mindmap-cli) to update this file. Run `target/debug/mindmap-cli help` to learn how.
+[11] **WF: Dogfooding** - VERY IMPORTANT: use the [`mindmap-cli`](./target/debug/mindmap-cli) to query and update this file (MINDMAP.md). Run `target/debug/mindmap-cli help` to learn how.
 
 [12] **WF: Development basics** - Make sure to run `mise run fmt` after each edit, so that the rust source code is ensured to be canonically formatted
 
