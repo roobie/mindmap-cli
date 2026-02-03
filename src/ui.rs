@@ -21,7 +21,7 @@ impl PrettyPrinter {
 impl Printer for PrettyPrinter {
     fn show(&self, node: &mindmap_cli::Node, inbound: &[u32], outbound: &[u32]) -> Result<()> {
         // ID in green (no newline)
-        Console::new(&format!("[{}] ", node.id)).green().print();
+        Console::new(format!("[{}] ", node.id)).green().print();
         // Title bold (uncolored) on same line
         Console::new(&node.raw_title).bold().println();
 
@@ -31,13 +31,13 @@ impl Printer for PrettyPrinter {
         // Incoming references in blue
         if !inbound.is_empty() {
             Console::new("Incoming:").blue().print();
-            Console::new(&format!(" {:?}", inbound)).blue().println();
+            Console::new(format!(" {:?}", inbound)).blue().println();
         }
 
         // Outgoing references in magenta
         if !outbound.is_empty() {
             Console::new("Outgoing:").magenta().print();
-            Console::new(&format!(" {:?}", outbound))
+            Console::new(format!(" {:?}", outbound))
                 .magenta()
                 .println();
         }
