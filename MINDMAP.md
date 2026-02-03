@@ -22,6 +22,8 @@
 
 ---
 
+[10] **WF: Dogfooding** - IMPORTANT: use `mindmap-cli` to update this file. The application can be invoked by `mise invoke ...` where `...` are arguments to this application. Start by executing `mise invoke help`
+
 [12] **WF: Development basics** - Make sure to run `mise run fmt` after each edit, so that the rust source code is ensured to be canonically formatted
 
 [13] **META: Development environment** - managed by `mise` (see mise.toml for versions and available tasks); common tasks: `mise test`, `mise run fmt`, `mise run lint`. Platform is Cargo/rust.
@@ -35,6 +37,8 @@
 [15] **AE: mindmap-cli** - v0 implementation started; added CHECKLIST.md; implemented Rust skeleton (parser + CLI) and verified build succeeds; commands implemented: show,list,search,refs,links,add,deprecate,verify,lint; added atomic save, edit command, put and patch (updated 2026-02-03)
 
 [16] **TODO: v0 phases** - Follow CHECKLIST.md: Phase1 parser, Phase2 commands, Phase3 navigation, Phase4 edit, Phase5 lint, tests (integration tests added 2026-02-03); CI workflow added (updated 2026-02-03)
+
+[20] **DOC: CLI help** - Added high-level description and core usage examples to CLI help output (mindmap-cli --help / help) (updated 2026-02-03)
 
 [17] **DONE: CHECKLIST.md** - Created CHECKLIST.md with actionable implementation checklist for v0 (2026-02-03)
 

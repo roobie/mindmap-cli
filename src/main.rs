@@ -3,7 +3,23 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "mindmap")]
-#[command(about = "CLI tool for working with MINDMAP files", long_about = None)]
+#[command(about = "CLI tool for working with MINDMAP files")]
+#[command(long_about = r#"mindmap-cli — small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
+One-node-per-line format: [N] **Title** - description with [N] references. IDs must be stable numeric values.
+
+EXAMPLES:
+  mindmap show 10
+  mindmap list --type AE --grep auth
+  mindmap add --type AE --title "AuthService" --desc "Handles auth [12]"
+  mindmap edit 12               # opens $EDITOR for an atomic, validated edit
+  mindmap patch 12 --title "AuthSvc" --desc "Updated desc"   # partial update (PATCH)
+  mindmap put 12 --line "[12] **AE: AuthSvc** - Updated desc [10]"   # full-line replace (PUT)
+  mindmap lint
+
+Notes:
+  - Default file: ./MINDMAP.md (override with --file)
+  - Use the EDITOR env var to control the editor used by 'edit'
+"#)]
 struct Cli {
     /// Path to MINDMAP file (defaults to ./MINDMAP.md)
     #[arg(global = true, short, long)]
