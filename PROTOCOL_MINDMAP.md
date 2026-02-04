@@ -1,7 +1,7 @@
 MINDMAP Interaction Protocol (mindmap-cli)
 
 Prime directive:
-Any and all interactions with MINDMAP files **MUST** be through `mindmap-cli`. It is **forbidden** to update MINDMAP files in other ways.
+Any and all interactions with MINDMAP files **MUST** be through `mindmap-cli`. It is **strictly forbidden** to update MINDMAP files in other ways.
 
 Purpose
 - Ensure every read or write operation against the repository MINDMAP files (default ./MINDMAP.md) is atomic, validated, and preserves the "one-node-per-line" format and numeric node-ID invariants.
@@ -25,6 +25,17 @@ Summary workflow (mandatory)
 2) Plan
    - Decide whether to `add`, `patch`, `put`, `deprecate`, or `delete`.
    - If removing a node with incoming refs, update/redirect those refs first.
+   - If several nodes need to be added, updated and/or deleted in a batch; then produce a `.sh` file that contains the changeset, e.g.
+```bash
+mindmap-cli patch 12 --title 'WF: Project overview & purpose' --desc '...'
+
+mindmap-cli delete 13
+
+mindmap-cli add --type 'AE' --title 'Entry Points' --desc '...'
+
+mindmap-cli put 15 --type 'DR' --title 'Why safety over speed' --desc '...'
+```
+    This ephemeral script can subsequently be executed by the agent or the user.
 
 3) Make the change (non-interactive preferred)
    - Add a node: `mindmap-cli add --type WF --title "Title" --desc "Description [SOME_NODE_ID] or [link](./file.md)"`
@@ -34,7 +45,7 @@ Summary workflow (mandatory)
    - Delete a node (after refs removed): `mindmap-cli delete 12`
 
 4) Validate & Sanity-check
-   - Run: `mindmap-cli lint`
+   - Run: `mindmap-cli lint` to surface any issues; optionally run `mindmap-cli lint --fix` to auto-correct spacing and duplicated type prefixes.
    - Re-check refs and show changed node(s): `mindmap-cli refs <id>`; `mindmap-cli show <id>`.
 
 5) Commit
@@ -54,5 +65,6 @@ Exceptions & fallback
 - Orphaned items are those that neither are referenced or refers to other nodes. Having any number of orphans is **not** exceptional. Determine which nodes are orphans by `mindmap-cli orphans`.
 
 Revision history
+- v3.0 - adds wording about batch updating
 - v2.0 - wording updated to be clearer.
 - v1.0 — created and adopted (automated by assistant) — use `mindmap-cli` for all future edits.
