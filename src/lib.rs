@@ -125,8 +125,8 @@ pub enum Commands {
     /// Lint the mindmap for basic issues
     Lint,
 
-    /// Show orphan nodes (no in & no out, excluding META)
-    Orphans,
+    /// Show graph neighborhood for a node (DOT format for Graphviz)
+    Graph { id: u32 },
 }
 
 #[derive(Debug, Clone)]

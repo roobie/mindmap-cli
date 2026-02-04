@@ -10,41 +10,66 @@ fn integration_cli_basic_commands() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("list").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("[1] **AE: One**"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("[1] **AE: One**"));
 
     // show existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("show").arg("1").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("AE: One"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("AE: One"));
 
     // refs for node 1 should show node 2
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("refs").arg("1").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("[2] **AE: Two**"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("[2] **AE: Two**"));
 
     // links for node 2
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("links").arg("2").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("references:"));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("references:"));
 
     // search
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("search").arg("first").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("AE: One"));
+    cmd.arg("search")
+        .arg("first")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("AE: One"));
 
     // JSON output for list
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("list").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"list\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("list")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"list\""));
 
     // add a new node via flags
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("add")
-        .arg("--type").arg("AE")
-        .arg("--title").arg("Three")
-        .arg("--desc").arg("third [1]")
-        .arg("--file").arg(file.path());
-    cmd.assert().success().stderr(predicate::str::contains("Added node"));
+        .arg("--type")
+        .arg("AE")
+        .arg("--title")
+        .arg("Three")
+        .arg("--desc")
+        .arg("third [1]")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Added node"));
 
     // ensure file contains new node
     let content = std::fs::read_to_string(file.path())?;
@@ -52,28 +77,48 @@ fn integration_cli_basic_commands() -> Result<(), Box<dyn std::error::Error>> {
 
     // patch node 1 title
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("patch").arg("1").arg("--title").arg("OneNew").arg("--file").arg(file.path());
-    cmd.assert().success().stderr(predicate::str::contains("Patched node"));
+    cmd.arg("patch")
+        .arg("1")
+        .arg("--title")
+        .arg("OneNew")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Patched node"));
 
     // put replace node 2
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("put").arg("2").arg("--line").arg("[2] **DR: Replaced** - replaced [1]").arg("--file").arg(file.path());
-    cmd.assert().success().stderr(predicate::str::contains("Put node"));
+    cmd.arg("put")
+        .arg("2")
+        .arg("--line")
+        .arg("[2] **DR: Replaced** - replaced [1]")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Put node"));
 
     // verify node 1
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("verify").arg("1").arg("--file").arg(file.path());
-    cmd.assert().success().stderr(predicate::str::contains("Marked node"));
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Marked node"));
 
     // lint
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("lint").arg("--file").arg(file.path());
-    cmd.assert().success().stderr(predicate::str::contains("Lint"));
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Lint"));
 
     // orphans (should be none)
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("orphans").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("No orphans").or(predicate::str::contains("Orphans")));
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("No orphans").or(predicate::str::contains("Orphans")));
 
     temp.close()?;
     Ok(())
@@ -88,7 +133,9 @@ fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Err
     // show non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("show").arg("99").arg("--file").arg(file.path());
-    cmd.assert().failure().stderr(predicate::str::contains("Node 99 not found"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node 99 not found"));
 
     // refs for non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
@@ -98,49 +145,92 @@ fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Err
     // links for non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("links").arg("99").arg("--file").arg(file.path());
-    cmd.assert().failure().stderr(predicate::str::contains("Node [99] not found"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node [99] not found"));
 
     // search non-existing
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("search").arg("nonexistent").arg("--file").arg(file.path());
+    cmd.arg("search")
+        .arg("nonexistent")
+        .arg("--file")
+        .arg(file.path());
     cmd.assert().success().stdout(predicate::str::is_empty());
 
     // add with invalid type/title
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("add").arg("--type").arg("INVALID").arg("--file").arg(file.path());
-    cmd.assert().failure().stderr(predicate::str::contains("add requires either all of --type,--title,--desc or none"));
+    cmd.arg("add")
+        .arg("--type")
+        .arg("INVALID")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "add requires either all of --type,--title,--desc or none",
+    ));
 
     // patch non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("patch").arg("99").arg("--title").arg("New").arg("--file").arg(file.path());
-    cmd.assert().failure().stderr(predicate::str::contains("Node 99 not found"));
+    cmd.arg("patch")
+        .arg("99")
+        .arg("--title")
+        .arg("New")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node 99 not found"));
 
     // put with mismatched ID
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("put").arg("1").arg("--line").arg("[2] **AE: New** - desc").arg("--file").arg(file.path());
-    cmd.assert().failure().stderr(predicate::str::contains("PUT line id does not match target id"));
+    cmd.arg("put")
+        .arg("1")
+        .arg("--line")
+        .arg("[2] **AE: New** - desc")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "PUT line id does not match target id",
+    ));
 
     // put non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("put").arg("99").arg("--line").arg("[99] **AE: New** - desc").arg("--file").arg(file.path());
-    cmd.assert().failure().stderr(predicate::str::contains("Node 99 not found"));
+    cmd.arg("put")
+        .arg("99")
+        .arg("--line")
+        .arg("[99] **AE: New** - desc")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node 99 not found"));
 
     // delete non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("delete").arg("99").arg("--file").arg(file.path());
-    cmd.assert().failure().stderr(predicate::str::contains("Node 99 not found"));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node 99 not found"));
 
     // deprecate to non-existing
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("deprecate").arg("1").arg("--to").arg("99").arg("--file").arg(file.path());
-    cmd.assert().success().stderr(predicate::str::contains("target node 99 does not exist"));
+    cmd.arg("deprecate")
+        .arg("1")
+        .arg("--to")
+        .arg("99")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("target node 99 does not exist"));
 
     // lint with issues
     let bad_file = temp.child("BAD.md");
     bad_file.write_str("[bad] not a node\n[1] **AE: One** - first\n[1] **AE: Dup** - dup\n")?;
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("lint").arg("--file").arg(bad_file.path());
-    cmd.assert().success().stderr(predicate::str::contains("Syntax").and(predicate::str::contains("Duplicate ID")));
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Syntax").and(predicate::str::contains("Duplicate ID")));
 
     // orphans with some
     let orphan_file = temp.child("ORPHANS.md");
@@ -151,13 +241,25 @@ fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Err
 
     // list with filters
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("list").arg("--type").arg("AE").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("[2] **AE: Two**"));
+    cmd.arg("list")
+        .arg("--type")
+        .arg("AE")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("[2] **AE: Two**"));
 
     // search with grep
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("list").arg("--grep").arg("first").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("first"));
+    cmd.arg("list")
+        .arg("--grep")
+        .arg("first")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("first"));
 
     temp.close()?;
     Ok(())
@@ -171,67 +273,157 @@ fn integration_cli_json_outputs() -> Result<(), Box<dyn std::error::Error>> {
 
     // show JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("show").arg("1").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"show\"").and(predicate::str::contains("\"id\": 1")));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("show")
+        .arg("1")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert().success().stdout(
+        predicate::str::contains("\"command\": \"show\"")
+            .and(predicate::str::contains("\"id\": 1")),
+    );
 
     // refs JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("refs").arg("1").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"refs\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("refs")
+        .arg("1")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"refs\""));
 
     // links JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("links").arg("1").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"links\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("links")
+        .arg("1")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"links\""));
 
     // search JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("search").arg("first").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"search\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("search")
+        .arg("first")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"search\""));
 
     // add JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("add")
-        .arg("--type").arg("AE")
-        .arg("--title").arg("Two")
-        .arg("--desc").arg("second")
-        .arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"add\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("add")
+        .arg("--type")
+        .arg("AE")
+        .arg("--title")
+        .arg("Two")
+        .arg("--desc")
+        .arg("second")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"add\""));
 
     // patch JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("patch").arg("1").arg("--title").arg("OneNew").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"patch\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("patch")
+        .arg("1")
+        .arg("--title")
+        .arg("OneNew")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"patch\""));
 
     // put JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("put").arg("2").arg("--line").arg("[2] **AE: Two** - second").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"put\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("put")
+        .arg("2")
+        .arg("--line")
+        .arg("[2] **AE: Two** - second")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"put\""));
 
     // verify JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("verify").arg("1").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"verify\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("verify")
+        .arg("1")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"verify\""));
 
     // deprecate JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("deprecate").arg("1").arg("--to").arg("2").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"deprecate\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("deprecate")
+        .arg("1")
+        .arg("--to")
+        .arg("2")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"deprecate\""));
 
     // delete JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("delete").arg("2").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"delete\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("delete")
+        .arg("2")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"delete\""));
 
     // lint JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("lint").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"lint\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("lint")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"lint\""));
 
     // orphans JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("--output").arg("json").arg("orphans").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::contains("\"command\": \"orphans\""));
+    cmd.arg("--output")
+        .arg("json")
+        .arg("orphans")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"orphans\""));
 
     temp.close()?;
     Ok(())
@@ -241,13 +433,29 @@ fn integration_cli_json_outputs() -> Result<(), Box<dyn std::error::Error>> {
 fn integration_cli_stdin() -> Result<(), Box<dyn std::error::Error>> {
     // Test reading from stdin for read-only commands
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("list").arg("--file").arg("-").write_stdin("[1] **AE: FromStdin** - desc\n");
-    cmd.assert().success().stdout(predicate::str::contains("[1] **AE: FromStdin**"));
+    cmd.arg("list")
+        .arg("--file")
+        .arg("-")
+        .write_stdin("[1] **AE: FromStdin** - desc\n");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("[1] **AE: FromStdin**"));
 
     // Try mutating command with stdin (should fail)
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.arg("add").arg("--type").arg("AE").arg("--title").arg("Test").arg("--desc").arg("test").arg("--file").arg("-").write_stdin("[1] **AE: FromStdin** - desc\n");
-    cmd.assert().failure().stderr(predicate::str::contains("Cannot add: mindmap was loaded from stdin"));
+    cmd.arg("add")
+        .arg("--type")
+        .arg("AE")
+        .arg("--title")
+        .arg("Test")
+        .arg("--desc")
+        .arg("test")
+        .arg("--file")
+        .arg("-")
+        .write_stdin("[1] **AE: FromStdin** - desc\n");
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Cannot add: mindmap was loaded from stdin",
+    ));
 
     Ok(())
 }

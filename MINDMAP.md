@@ -59,3 +59,4 @@
 [32] **AE: Manual parser for node lines** - Replaced regex captures with manual parser to avoid repeated compilation and allocations; tests updated (refactor 2026-02-04)
 [33] **AE: Parser consolidation** - Removed NODE_RE; cmd_edit uses manual parser as well to avoid any regex usage in hot paths (refactor 2026-02-04)
 [34] **AE: CLI refactor to lib.rs and unit tests** - Moved Cli/Commands structs and command logic to lib.rs via run() function; simplified main.rs; added 18+ unit tests for cmd_* functions and error cases; test coverage improved to 50% (from ~31%) using tarpaulin
+[35] **PERF: Manual parser benchmarks** - Added criterion benchmarks: parse_node_line (~200ns), mindmap_from_string (~8µs for 3 nodes); quantifies performance of regex-free manual parser
