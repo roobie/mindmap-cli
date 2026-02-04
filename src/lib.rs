@@ -24,8 +24,6 @@ pub struct Mindmap {
 static NODE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\[(\d+)\] \*\*(.+?)\*\* - (.*)$"#).expect("failed to compile NODE_RE")
 });
-static REF_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\[(\d+)\]"#).expect("failed to compile REF_RE"));
 
 impl Mindmap {
     pub fn load(path: PathBuf) -> Result<Self> {
@@ -50,32 +48,11 @@ impl Mindmap {
         let mut by_id = HashMap::new();
 
         for (i, line) in lines.iter().enumerate() {
-            if let Some(caps) = NODE_RE.captures(line) {
-                let id: u32 = caps[1].parse()?;
-                let raw_title = caps[2].to_string();
-                let description = caps[3].to_string();
-
-                let mut references = Vec::new();
-                for rcaps in REF_RE.captures_iter(&description) {
-                    if let Ok(rid) = rcaps[1].parse::<u32>()
-                        && rid != id
-                    {
-                        references.push(rid);
-                    }
+            if let Ok(node) = parse_node_line(line, i) {
+                if by_id.contains_key(&node.id) {
+                    eprintln!("Warning: duplicate node id {} at line {}", node.id, i + 1);
                 }
-
-                let node = Node {
-                    id,
-                    raw_title,
-                    description,
-                    references,
-                    line_index: i,
-                };
-
-                if by_id.contains_key(&id) {
-                    eprintln!("Warning: duplicate node id {} at line {}", id, i + 1);
-                }
-                by_id.insert(id, nodes.len());
+                by_id.insert(node.id, nodes.len());
                 nodes.push(node);
             }
         }
@@ -122,31 +99,100 @@ impl Mindmap {
     }
 }
 
-// Command helpers
-
+// Helper: lightweight manual parser for the strict node format
+// Format: ^\[(\d+)\] \*\*(.+?)\*\* - (.*)$
 pub fn parse_node_line(line: &str, line_index: usize) -> Result<Node> {
-    let caps = NODE_RE
-        .captures(line)
-        .ok_or_else(|| anyhow::anyhow!("Line does not match node format"))?;
-    let id: u32 = caps[1].parse()?;
-    let raw_title = caps[2].to_string();
-    let description = caps[3].to_string();
-    let mut references = Vec::new();
-    for rcaps in REF_RE.captures_iter(&description) {
-        if let Ok(rid) = rcaps[1].parse::<u32>()
-            && rid != id
-        {
-            references.push(rid);
-        }
+    // Fast path sanity checks
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with('[') {
+        return Err(anyhow::anyhow!("Line does not match node format"));
     }
+
+    // Find closing bracket for ID
+    let end_bracket = match trimmed.find(']') {
+        Some(pos) => pos,
+        None => return Err(anyhow::anyhow!("Line does not match node format")),
+    };
+
+    let id_str = &trimmed[1..end_bracket];
+    let id: u32 = id_str.parse()?;
+
+    // Expect a space after ']'
+    let mut pos = end_bracket + 1;
+    let chars = trimmed.as_bytes();
+    if chars.get(pos).map(|b| *b as char) == Some(' ') {
+        pos += 1;
+    } else {
+        return Err(anyhow::anyhow!("Line does not match node format"));
+    }
+
+    // Expect opening '**'
+    if trimmed.get(pos..pos + 2) != Some("**") {
+        return Err(anyhow::anyhow!("Line does not match node format"));
+    }
+    pos += 2;
+
+    // Find closing '**' for title
+    let rem = &trimmed[pos..];
+    let title_rel_end = match rem.find("**") {
+        Some(p) => p,
+        None => return Err(anyhow::anyhow!("Line does not match node format")),
+    };
+    let title = rem[..title_rel_end].to_string();
+    pos += title_rel_end + 2; // skip closing '**'
+
+    // Expect ' - ' (space dash space)
+    if trimmed.get(pos..pos + 3) != Some(" - ") {
+        return Err(anyhow::anyhow!("Line does not match node format"));
+    }
+    pos += 3;
+
+    let description = trimmed[pos..].to_string();
+
+    // Extract references
+    let references = extract_refs_from_str(&description, Some(id));
+
     Ok(Node {
         id,
-        raw_title,
+        raw_title: title,
         description,
         references,
         line_index,
     })
 }
+
+// Extract references of the form [123] from a description string.
+// If skip_self is Some(id) then occurrences equal to that id are ignored.
+fn extract_refs_from_str(s: &str, skip_self: Option<u32>) -> Vec<u32> {
+    let mut refs = Vec::new();
+    let mut i = 0usize;
+    while i < s.len() {
+        // find next '['
+        if let Some(rel) = s[i..].find('[') {
+            let start = i + rel;
+            if let Some(rel_end) = s[start..].find(']') {
+                let end = start + rel_end;
+                let idslice = &s[start + 1..end];
+                if !idslice.is_empty() && idslice.chars().all(|c| c.is_ascii_digit()) {
+                    if let Ok(rid) = idslice.parse::<u32>() {
+                        if Some(rid) != skip_self {
+                            refs.push(rid);
+                        }
+                    }
+                }
+                i = end + 1;
+                continue;
+            } else {
+                break; // unmatched '['
+            }
+        } else {
+            break;
+        }
+    }
+    refs
+}
+
+// Command helpers
 
 pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
     if let Some(node) = mm.get_node(id) {
@@ -235,14 +281,7 @@ pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, desc: &str) -> 
     mm.lines.push(line.clone());
 
     let line_index = mm.lines.len() - 1;
-    let mut references = Vec::new();
-    for rcaps in REF_RE.captures_iter(desc) {
-        if let Ok(rid) = rcaps[1].parse::<u32>()
-            && rid != id
-        {
-            references.push(rid);
-        }
-    }
+    let references = extract_refs_from_str(desc, Some(id));
 
     let node = Node {
         id,
@@ -428,14 +467,7 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     mm.lines[node.line_index] = edited_line.to_string();
     let new_title = caps[2].to_string();
     let new_desc = caps[3].to_string();
-    let mut new_refs = Vec::new();
-    for rcaps in REF_RE.captures_iter(&new_desc) {
-        if let Ok(rid) = rcaps[1].parse::<u32>()
-            && rid != id
-        {
-            new_refs.push(rid);
-        }
-    }
+    let new_refs = extract_refs_from_str(&new_desc, Some(id));
 
     // update node in-place
     let node_mut = &mut mm.nodes[idx];
@@ -586,24 +618,25 @@ pub fn cmd_delete(mm: &mut Mindmap, id: u32, force: bool) -> Result<()> {
 pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     let mut warnings = Vec::new();
 
-    // 1) Syntax: lines starting with '[' but not matching node regex
+    // 1) Syntax: lines starting with '[' but not matching node format
     for (i, line) in mm.lines.iter().enumerate() {
         let trimmed = line.trim_start();
-        if trimmed.starts_with('[') && !NODE_RE.is_match(line) {
-            warnings.push(format!(
-                "Syntax: line {} starts with '[' but does not match node format",
-                i + 1
-            ));
+        if trimmed.starts_with('[') {
+            if parse_node_line(trimmed, i).is_err() {
+                warnings.push(format!(
+                    "Syntax: line {} starts with '[' but does not match node format",
+                    i + 1
+                ));
+            }
         }
     }
 
     // 2) Duplicate IDs: scan lines for node ids
     let mut id_map: HashMap<u32, Vec<usize>> = HashMap::new();
     for (i, line) in mm.lines.iter().enumerate() {
-        if let Some(caps) = NODE_RE.captures(line)
-            && let Ok(id) = caps[1].parse::<u32>() {
-                id_map.entry(id).or_default().push(i + 1);
-            }
+        if let Ok(node) = parse_node_line(line, i) {
+            id_map.entry(node.id).or_default().push(i + 1);
+        }
     }
     for (id, locations) in &id_map {
         if locations.len() > 1 {
