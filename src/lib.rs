@@ -501,14 +501,13 @@ pub fn cmd_add_editor(mm: &mut Mindmap, editor: &str, strict: bool) -> Result<u3
 
     if strict {
         for r in &parsed.references {
-            if let Reference::Internal(iid) = r {
-                if !mm.by_id.contains_key(iid) {
+            if let Reference::Internal(iid) = r
+                && !mm.by_id.contains_key(iid) {
                     return Err(anyhow::anyhow!(format!(
                         "ADD strict: reference to missing node {}",
                         iid
                     )));
                 }
-            }
         }
     }
 
@@ -642,14 +641,13 @@ pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()
     // strict check for references
     if strict {
         for r in &parsed.references {
-            if let Reference::Internal(iid) = r {
-                if !mm.by_id.contains_key(iid) {
+            if let Reference::Internal(iid) = r
+                && !mm.by_id.contains_key(iid) {
                     return Err(anyhow::anyhow!(format!(
                         "PUT strict: reference to missing node {}",
                         iid
                     )));
                 }
-            }
         }
     }
 
@@ -706,14 +704,13 @@ pub fn cmd_patch(
 
     if strict {
         for r in &parsed.references {
-            if let Reference::Internal(iid) = r {
-                if !mm.by_id.contains_key(iid) {
+            if let Reference::Internal(iid) = r
+                && !mm.by_id.contains_key(iid) {
                     return Err(anyhow::anyhow!(format!(
                         "PATCH strict: reference to missing node {}",
                         iid
                     )));
                 }
-            }
         }
     }
 
@@ -842,11 +839,10 @@ pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
     }
     for n in &mm.nodes {
         for r in &n.references {
-            if let Reference::Internal(iid) = r {
-                if incoming.contains_key(iid) {
+            if let Reference::Internal(iid) = r
+                && incoming.contains_key(iid) {
                     *incoming.entry(*iid).or_insert(0) += 1;
                 }
-            }
         }
     }
     for n in &mm.nodes {
@@ -886,11 +882,10 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
     // Incoming: nodes that reference self
     for n in &mm.nodes {
         for r in &n.references {
-            if let Reference::Internal(rid) = r {
-                if *rid == id {
+            if let Reference::Internal(rid) = r
+                && *rid == id {
                     nodes.insert(n.id);
                 }
-            }
         }
     }
 
@@ -911,11 +906,10 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
     for &nid in &nodes {
         if let Some(node) = mm.get_node(nid) {
             for r in &node.references {
-                if let Reference::Internal(rid) = r {
-                    if nodes.contains(rid) {
+                if let Reference::Internal(rid) = r
+                    && nodes.contains(rid) {
                         dot.push_str(&format!("  {} -> {};\n", nid, rid));
                     }
-                }
             }
         }
     }
