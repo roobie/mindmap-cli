@@ -24,7 +24,8 @@ pub struct Mindmap {
 static NODE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"^\[(\d+)\] \*\*(.+?)\*\* - (.*)$"#).expect("failed to compile NODE_RE")
 });
-static REF_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\[(\d+)\]"#).expect("failed to compile REF_RE"));
+static REF_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\[(\d+)\]"#).expect("failed to compile REF_RE"));
 
 impl Mindmap {
     pub fn load(path: PathBuf) -> Result<Self> {
@@ -56,7 +57,9 @@ impl Mindmap {
 
                 let mut references = Vec::new();
                 for rcaps in REF_RE.captures_iter(&description) {
-                    if let Ok(rid) = rcaps[1].parse::<u32>() && rid != id {
+                    if let Ok(rid) = rcaps[1].parse::<u32>()
+                        && rid != id
+                    {
                         references.push(rid);
                     }
                 }
@@ -77,7 +80,12 @@ impl Mindmap {
             }
         }
 
-        Ok(Mindmap { path, lines, nodes, by_id })
+        Ok(Mindmap {
+            path,
+            lines,
+            nodes,
+            by_id,
+        })
     }
 
     pub fn save(&self) -> Result<()> {
@@ -125,7 +133,9 @@ pub fn parse_node_line(line: &str, line_index: usize) -> Result<Node> {
     let description = caps[3].to_string();
     let mut references = Vec::new();
     for rcaps in REF_RE.captures_iter(&description) {
-        if let Ok(rid) = rcaps[1].parse::<u32>() && rid != id {
+        if let Ok(rid) = rcaps[1].parse::<u32>()
+            && rid != id
+        {
             references.push(rid);
         }
     }
@@ -164,7 +174,9 @@ pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
 pub fn cmd_list(mm: &Mindmap, type_filter: Option<&str>, grep: Option<&str>) -> Vec<String> {
     let mut res = Vec::new();
     for n in &mm.nodes {
-        if let Some(tf) = type_filter && !n.raw_title.starts_with(&format!("{}:", tf)) {
+        if let Some(tf) = type_filter
+            && !n.raw_title.starts_with(&format!("{}:", tf))
+        {
             continue;
         }
         if let Some(q) = grep {
@@ -225,7 +237,9 @@ pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, desc: &str) -> 
     let line_index = mm.lines.len() - 1;
     let mut references = Vec::new();
     for rcaps in REF_RE.captures_iter(desc) {
-        if let Ok(rid) = rcaps[1].parse::<u32>() && rid != id {
+        if let Ok(rid) = rcaps[1].parse::<u32>()
+            && rid != id
+        {
             references.push(rid);
         }
     }
@@ -246,7 +260,9 @@ pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, desc: &str) -> 
 pub fn cmd_add_editor(mm: &mut Mindmap, editor: &str, strict: bool) -> Result<u32> {
     // require interactive terminal for editor
     if !atty::is(atty::Stream::Stdin) {
-        return Err(anyhow::anyhow!("add via editor requires an interactive terminal"));
+        return Err(anyhow::anyhow!(
+            "add via editor requires an interactive terminal"
+        ));
     }
 
     let id = mm.next_id();
@@ -279,20 +295,28 @@ pub fn cmd_add_editor(mm: &mut Mindmap, editor: &str, strict: bool) -> Result<u3
         return Err(anyhow::anyhow!("No content written in editor"));
     }
     if nonempty.len() > 1 {
-        return Err(anyhow::anyhow!("Expected exactly one node line in editor; found multiple lines"));
+        return Err(anyhow::anyhow!(
+            "Expected exactly one node line in editor; found multiple lines"
+        ));
     }
     let line = nonempty[0];
 
     // parse and validate
     let parsed = parse_node_line(line, mm.lines.len())?;
     if parsed.id != id {
-        return Err(anyhow::anyhow!(format!("Added line id changed; expected [{}]", id)));
+        return Err(anyhow::anyhow!(format!(
+            "Added line id changed; expected [{}]",
+            id
+        )));
     }
 
     if strict {
         for rid in &parsed.references {
             if !mm.by_id.contains_key(rid) {
-                return Err(anyhow::anyhow!(format!("ADD strict: reference to missing node {}", rid)));
+                return Err(anyhow::anyhow!(format!(
+                    "ADD strict: reference to missing node {}",
+                    rid
+                )));
             }
         }
     }
@@ -406,7 +430,9 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let new_desc = caps[3].to_string();
     let mut new_refs = Vec::new();
     for rcaps in REF_RE.captures_iter(&new_desc) {
-        if let Ok(rid) = rcaps[1].parse::<u32>() && rid != id {
+        if let Ok(rid) = rcaps[1].parse::<u32>()
+            && rid != id
+        {
             new_refs.push(rid);
         }
     }

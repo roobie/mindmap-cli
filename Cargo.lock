@@ -457,6 +457,7 @@ dependencies = [
  "atty",
  "chrono",
  "clap",
+ "once_cell",
  "predicates 2.1.5",
  "pretty-console",
  "regex",
