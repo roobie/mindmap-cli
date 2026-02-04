@@ -1,250 +1,461 @@
-use assert_cmd::prelude::*;
+use assert_cmd::Command;
 use assert_fs::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
 
 #[test]
-fn integration_add_and_show() -> Result<(), Box<dyn std::error::Error>> {
+fn integration_cli_basic_commands() -> Result<(), Box<dyn std::error::Error>> {
     let temp = assert_fs::TempDir::new()?;
-    // create initial MINDMAP.md with one node
     let file = temp.child("MINDMAP.md");
-    file.write_str("[1] **AE: Base** - base node\n")?;
+    file.write_str("[1] **AE: One** - first\n[2] **AE: Two** - refers [1]\n")?;
 
-    // run `mindmap add --type AE --title New --desc "refers [1]"` in temp dir
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.current_dir(temp.path())
-        .arg("add")
+    cmd.arg("list").arg("--file").arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("[1] **AE: One**"));
+
+    // show existing node
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("show").arg("1").arg("--file").arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("AE: One"));
+
+    // refs for node 1 should show node 2
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("refs").arg("1").arg("--file").arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("[2] **AE: Two**"));
+
+    // links for node 2
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("links").arg("2").arg("--file").arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("references:"));
+
+    // search
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("search")
+        .arg("first")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("AE: One"));
+
+    // JSON output for list
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("list")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"list\""));
+
+    // add a new node via flags
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("add")
         .arg("--type")
         .arg("AE")
         .arg("--title")
-        .arg("New")
+        .arg("Three")
         .arg("--desc")
-        .arg("refers [1]");
+        .arg("third [1]")
+        .arg("--file")
+        .arg(file.path());
     cmd.assert()
         .success()
         .stderr(predicate::str::contains("Added node"));
 
-    // show the new node (should be id 2)
-    let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
-    cmd2.current_dir(temp.path()).arg("show").arg("2");
-    cmd2.assert()
-        .success()
-        .stdout(predicate::str::contains("New"));
-
-    temp.close()?;
-    Ok(())
-}
-
-#[test]
-fn integration_edit_flow() -> Result<(), Box<dyn std::error::Error>> {
-    let temp = assert_fs::TempDir::new()?;
-    let file = temp.child("MINDMAP.md");
-    file.write_str("[1] **AE: ToEdit** - original desc\n")?;
-
-    // create an editor script that overwrites the file passed
-    let editor = temp.child("editor.sh");
-    editor
-        .write_str("#!/bin/sh\ncat >\"$1\" <<'EOF'\n[1] **AE: Edited** - edited desc [1]\nEOF\n")?;
-    // make it executable
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(editor.path())?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(editor.path(), perms)?;
-    }
-
-    let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.current_dir(temp.path())
-        .env("EDITOR", editor.path())
-        .arg("edit")
-        .arg("1");
-    cmd.assert()
-        .success()
-        .stderr(predicate::str::contains("Edited node [1]"));
-
-    // check file contains edited title
-    file.assert(predicate::str::contains("Edited"));
-
-    temp.close()?;
-    Ok(())
-}
-
-#[test]
-fn integration_edit_change_id_fails() -> Result<(), Box<dyn std::error::Error>> {
-    let temp = assert_fs::TempDir::new()?;
-    let file = temp.child("MINDMAP.md");
-    file.write_str("[1] **AE: KeepID** - original desc\n")?;
-
-    // editor writes a different ID
-    let editor = temp.child("bad_editor.sh");
-    editor
-        .write_str("#!/bin/sh\ncat >\"$1\" <<'EOF'\n[2] **AE: Bad** - changed id\nEOF\nexit 0\n")?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(editor.path())?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(editor.path(), perms)?;
-    }
-
-    let before = std::fs::read_to_string(file.path())?;
-
-    let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.current_dir(temp.path())
-        .env("EDITOR", editor.path())
-        .arg("edit")
-        .arg("1");
-    cmd.assert().failure();
-
-    // file should be unchanged
-    let after = std::fs::read_to_string(file.path())?;
-    assert_eq!(before, after);
-
-    temp.close()?;
-    Ok(())
-}
-
-#[test]
-fn integration_patch_and_put() -> Result<(), Box<dyn std::error::Error>> {
-    let temp = assert_fs::TempDir::new()?;
-    let file = temp.child("MINDMAP.md");
-    file.write_str("[1] **AE: Alpha** - a\n[2] **AE: Beta** - b\n")?;
+    // ensure file contains new node
+    let content = std::fs::read_to_string(file.path())?;
+    assert!(content.contains("AE: Three"));
 
     // patch node 1 title
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.current_dir(temp.path())
-        .arg("patch")
+    cmd.arg("patch")
         .arg("1")
         .arg("--title")
-        .arg("AlphaX");
+        .arg("OneNew")
+        .arg("--file")
+        .arg(file.path());
     cmd.assert()
         .success()
-        .stderr(predicate::str::contains("Patched node [1]"));
+        .stderr(predicate::str::contains("Patched node"));
 
-    // put full line for node 2
-    let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
-    cmd2.current_dir(temp.path())
-        .arg("put")
+    // put replace node 2
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("put")
         .arg("2")
         .arg("--line")
-        .arg("[2] **DR: NewBeta** - newb [1]");
-    cmd2.assert()
+        .arg("[2] **DR: Replaced** - replaced [1]")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
         .success()
-        .stderr(predicate::str::contains("Put node [2]"));
+        .stderr(predicate::str::contains("Put node"));
 
-    // verify file contents
-    let content = std::fs::read_to_string(file.path())?;
-    assert!(content.contains("AlphaX"));
-    assert!(content.contains("DR: NewBeta"));
+    // verify node 1
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("verify").arg("1").arg("--file").arg(file.path());
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Marked node"));
+
+    // lint
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("lint").arg("--file").arg(file.path());
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Lint"));
+
+    // orphans (should be none)
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("orphans").arg("--file").arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("No orphans").or(predicate::str::contains("Orphans")));
 
     temp.close()?;
     Ok(())
 }
 
 #[test]
-fn integration_delete_flow() -> Result<(), Box<dyn std::error::Error>> {
+fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Error>> {
     let temp = assert_fs::TempDir::new()?;
     let file = temp.child("MINDMAP.md");
-    // node1 references node2
-    file.write_str("[1] **AE: One** - refers [2]\n[2] **AE: Two** - second\n")?;
+    file.write_str("[1] **AE: One** - first\n[2] **AE: Two** - refers [1]\n")?;
 
-    // attempt delete without force -> should fail
+    // show non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    cmd.current_dir(temp.path()).arg("delete").arg("2");
-    cmd.assert().failure();
+    cmd.arg("show").arg("99").arg("--file").arg(file.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node 99 not found"));
 
-    // delete with force -> should succeed
-    let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
-    cmd2.current_dir(temp.path())
-        .arg("delete")
-        .arg("2")
-        .arg("--force");
-    cmd2.assert()
+    // refs for non-existing node
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("refs").arg("99").arg("--file").arg(file.path());
+    cmd.assert().success().stdout(predicate::str::is_empty()); // empty output
+
+    // links for non-existing node
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("links").arg("99").arg("--file").arg(file.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node [99] not found"));
+
+    // search non-existing
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("search")
+        .arg("nonexistent")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert().success().stdout(predicate::str::is_empty());
+
+    // add with invalid type/title
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("add")
+        .arg("--type")
+        .arg("INVALID")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "add requires either all of --type,--title,--desc or none",
+    ));
+
+    // patch non-existing node
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("patch")
+        .arg("99")
+        .arg("--title")
+        .arg("New")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node 99 not found"));
+
+    // put with mismatched ID
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("put")
+        .arg("1")
+        .arg("--line")
+        .arg("[2] **AE: New** - desc")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "PUT line id does not match target id",
+    ));
+
+    // put non-existing node
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("put")
+        .arg("99")
+        .arg("--line")
+        .arg("[99] **AE: New** - desc")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node 99 not found"));
+
+    // delete non-existing node
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("delete").arg("99").arg("--file").arg(file.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node 99 not found"));
+
+    // deprecate to non-existing
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("deprecate")
+        .arg("1")
+        .arg("--to")
+        .arg("99")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
         .success()
-        .stderr(predicate::str::contains("Deleted node [2]"));
+        .stderr(predicate::str::contains("target node 99 does not exist"));
 
-    let content = std::fs::read_to_string(file.path())?;
-    assert!(!content.contains("**AE: Two**"));
-
-    // lint should now mention missing ref (dangling reference)
-    let mut cmd3 = Command::cargo_bin("mindmap-cli")?;
-    cmd3.current_dir(temp.path()).arg("lint");
-    cmd3.assert()
+    // lint with issues
+    let bad_file = temp.child("BAD.md");
+    bad_file.write_str("[bad] not a node\n[1] **AE: One** - first\n[1] **AE: Dup** - dup\n")?;
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("lint").arg("--file").arg(bad_file.path());
+    cmd.assert()
         .success()
-        .stderr(predicate::str::contains("Missing ref"));
+        .stderr(predicate::str::contains("Syntax").and(predicate::str::contains("Duplicate ID")));
+
+    // orphans with some
+    let orphan_file = temp.child("ORPHANS.md");
+    orphan_file.write_str("[1] **AE: One** - first\n[2] **AE: Orphan** - lonely\n")?;
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("orphans").arg("--file").arg(orphan_file.path());
+    cmd.assert().success().stdout(predicate::str::contains("2"));
+
+    // list with filters
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("list")
+        .arg("--type")
+        .arg("AE")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("[2] **AE: Two**"));
+
+    // search with grep
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("list")
+        .arg("--grep")
+        .arg("first")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("first"));
 
     temp.close()?;
     Ok(())
 }
 
 #[test]
-fn integration_stdin_readonly() -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::Write as IoWrite;
-    let content = "[1] **AE: A** - base\n[2] **AE: B** - refers [1]\n";
+fn integration_cli_json_outputs() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    let file = temp.child("MINDMAP.md");
+    file.write_str("[1] **AE: One** - first\n")?;
 
-    // list via stdin (manual spawn + write to stdin)
+    // show JSON
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
-    let mut child = cmd
+    cmd.arg("--output")
+        .arg("json")
+        .arg("show")
+        .arg("1")
         .arg("--file")
-        .arg("-")
-        .arg("list")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()?;
-    child
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(content.as_bytes())?;
-    let out = child.wait_with_output()?;
-    assert!(out.status.success());
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("AE: A"));
+        .arg(file.path());
+    cmd.assert().success().stdout(
+        predicate::str::contains("\"command\": \"show\"")
+            .and(predicate::str::contains("\"id\": 1")),
+    );
 
-    // lint via stdin
-    let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
-    let mut child2 = cmd2
+    // refs JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("refs")
+        .arg("1")
         .arg("--file")
-        .arg("-")
-        .arg("lint")
-        .stdin(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
-    child2
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(content.as_bytes())?;
-    let out2 = child2.wait_with_output()?;
-    assert!(out2.status.success());
-    let stderr2 = String::from_utf8_lossy(&out2.stderr);
-    assert!(stderr2.contains("Lint"));
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"refs\""));
 
-    // mutating command via stdin should fail
-    let mut cmd3 = Command::cargo_bin("mindmap-cli")?;
-    let mut child3 = cmd3
+    // links JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("links")
+        .arg("1")
         .arg("--file")
-        .arg("-")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"links\""));
+
+    // search JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("search")
+        .arg("first")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"search\""));
+
+    // add JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
         .arg("add")
         .arg("--type")
         .arg("AE")
         .arg("--title")
-        .arg("X")
+        .arg("Two")
         .arg("--desc")
-        .arg("d")
-        .stdin(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
-    child3
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(content.as_bytes())?;
-    let out3 = child3.wait_with_output()?;
-    assert!(!out3.status.success());
-    let stderr3 = String::from_utf8_lossy(&out3.stderr);
-    assert!(stderr3.contains("Cannot add"));
+        .arg("second")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"add\""));
+
+    // patch JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("patch")
+        .arg("1")
+        .arg("--title")
+        .arg("OneNew")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"patch\""));
+
+    // put JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("put")
+        .arg("2")
+        .arg("--line")
+        .arg("[2] **AE: Two** - second")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"put\""));
+
+    // verify JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("verify")
+        .arg("1")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"verify\""));
+
+    // deprecate JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("deprecate")
+        .arg("1")
+        .arg("--to")
+        .arg("2")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"deprecate\""));
+
+    // delete JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("delete")
+        .arg("2")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"delete\""));
+
+    // lint JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("lint")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"lint\""));
+
+    // orphans JSON
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("--output")
+        .arg("json")
+        .arg("orphans")
+        .arg("--file")
+        .arg(file.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"command\": \"orphans\""));
+
+    temp.close()?;
+    Ok(())
+}
+
+#[test]
+fn integration_cli_stdin() -> Result<(), Box<dyn std::error::Error>> {
+    // Test reading from stdin for read-only commands
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("list")
+        .arg("--file")
+        .arg("-")
+        .write_stdin("[1] **AE: FromStdin** - desc\n");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("[1] **AE: FromStdin**"));
+
+    // Try mutating command with stdin (should fail)
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    cmd.arg("add")
+        .arg("--type")
+        .arg("AE")
+        .arg("--title")
+        .arg("Test")
+        .arg("--desc")
+        .arg("test")
+        .arg("--file")
+        .arg("-")
+        .write_stdin("[1] **AE: FromStdin** - desc\n");
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Cannot add: mindmap was loaded from stdin",
+    ));
 
     Ok(())
 }

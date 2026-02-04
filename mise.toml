@@ -28,6 +28,10 @@ run = "cargo build"
 description = "Run cli tests"
 depends = ["build"]
 run = "cargo test"
+[tasks.testcov]
+description = "Run cli tests"
+depends = ["build"]
+run = "cargo tarpaulin --out Html --out Xml"
 
 [tasks.install]
 description = "Install binary"
