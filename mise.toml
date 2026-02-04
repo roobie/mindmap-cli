@@ -27,6 +27,10 @@ run = "cargo build --out Html"
 [tasks.test]
 description = "Run cli tests"
 depends = ["build"]
+run = "cargo test"
+[tasks.testcov]
+description = "Run cli tests"
+depends = ["build"]
 run = "cargo tarpaulin"
 
 [tasks.install]

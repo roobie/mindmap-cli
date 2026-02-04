@@ -57,3 +57,4 @@
 [30] **DONE: Add from $EDITOR** - `add` editor flow implemented: calling `mindmap-cli add` with no args opens $EDITOR to author a single validated node line which is appended to MINDMAP.md (updated 2026-02-04)
 [31] **WF: Protocol for interacting with MINDMAP** - See [PROTOCOL_MINDMAP.md](./PROTOCOL_MINDMAP.md) for the formal protocol describing how to interact with MINDMAP.md (add/edit/lint/orphans flows).
 [32] **AE: Manual parser for node lines** - Replaced regex captures with manual parser to avoid repeated compilation and allocations; tests updated (refactor 2026-02-04)
+[33] **AE: Parser consolidation** - Removed NODE_RE; cmd_edit uses manual parser as well to avoid any regex usage in hot paths (refactor 2026-02-04)

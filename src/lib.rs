@@ -1,6 +1,4 @@
 use anyhow::{Context, Result};
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::{collections::HashMap, fs, io::Read, path::PathBuf};
 
 #[derive(Debug, Clone)]
@@ -19,11 +17,6 @@ pub struct Mindmap {
     pub nodes: Vec<Node>,
     pub by_id: HashMap<u32, usize>,
 }
-
-// Precompile commonly used regexes once to avoid repeated compilation
-static NODE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\[(\d+)\] \*\*(.+?)\*\* - (.*)$"#).expect("failed to compile NODE_RE")
-});
 
 impl Mindmap {
     pub fn load(path: PathBuf) -> Result<Self> {
@@ -454,20 +447,17 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let edited = std::fs::read_to_string(tmp.path())?;
     let edited_line = edited.lines().next().unwrap_or("").trim();
 
-    // validate: must match node regex and keep same id
-    let caps = NODE_RE
-        .captures(edited_line)
-        .ok_or_else(|| anyhow::anyhow!("Edited line does not match node format"))?;
-    let new_id: u32 = caps[1].parse()?;
-    if new_id != id {
+    // parse and validate using manual parser
+    let parsed = parse_node_line(edited_line, node.line_index)?;
+    if parsed.id != id {
         return Err(anyhow::anyhow!("Cannot change node ID"));
     }
 
     // all good: replace line in mm.lines and update node fields
     mm.lines[node.line_index] = edited_line.to_string();
-    let new_title = caps[2].to_string();
-    let new_desc = caps[3].to_string();
-    let new_refs = extract_refs_from_str(&new_desc, Some(id));
+    let new_title = parsed.raw_title;
+    let new_desc = parsed.description;
+    let new_refs = parsed.references;
 
     // update node in-place
     let node_mut = &mut mm.nodes[idx];
