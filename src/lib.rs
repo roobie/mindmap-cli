@@ -138,6 +138,23 @@ pub enum Commands {
 
     /// Bootstrap: print help and list to bootstrap an AI agent's context
     Bootstrap,
+
+    /// Batch mode: apply multiple non-interactive commands atomically
+    Batch {
+        /// Input file with commands (one per line) or '-' for stdin
+        #[arg(long)]
+        input: Option<PathBuf>,
+        /// Input format: 'lines' or 'json'
+        #[arg(long, default_value = "lines")]
+        format: String,
+        /// Do not write changes; just show what would happen
+        #[arg(long)]
+        dry_run: bool,
+        /// Apply auto-fixes (spacing / duplicated type prefixes) before saving
+        #[arg(long)]
+        fix: bool,
+    },
+
 }
 
 #[derive(Debug, Clone)]
