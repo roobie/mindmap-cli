@@ -1277,12 +1277,33 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Bootstrap => {
             // Produce help text and then list nodes to bootstrap an agent's context.
             use clap::CommandFactory;
+            use std::path::Path;
 
             let mut cmd = Cli::command();
             // capture help into string
             let mut buf: Vec<u8> = Vec::new();
             cmd.write_long_help(&mut buf)?;
             let help_str = String::from_utf8(buf)?;
+
+            // try to read PROTOCOL_MINDMAP.md next to the mindmap file
+            let protocol_path = mm
+                .path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("PROTOCOL_MINDMAP.md");
+
+            let protocol = if Path::new(&protocol_path).exists() {
+                match fs::read_to_string(&protocol_path) {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        eprintln!("Warning: failed to read {}: {}", protocol_path.display(), e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
 
             let items = cmd_list(&mm, None, None);
 
@@ -1291,11 +1312,22 @@ pub fn run(cli: Cli) -> Result<()> {
                     .into_iter()
                     .map(|line| serde_json::json!({"line": line}))
                     .collect();
-                let obj = serde_json::json!({"command": "bootstrap", "help": help_str, "items": arr});
+                let mut obj = serde_json::json!({"command": "bootstrap", "help": help_str, "items": arr});
+                if let Some(proto) = protocol {
+                    obj["protocol"] = serde_json::json!(proto);
+                }
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else {
                 // print help
                 println!("{}", help_str);
+
+                // print protocol if found
+                if let Some(proto) = protocol {
+                    eprintln!("--- PROTOCOL_MINDMAP.md ---");
+                    println!("{}", proto);
+                    eprintln!("--- end protocol ---");
+                }
+
                 // print list
                 if let Some(p) = &printer {
                     p.list(&items)?;
