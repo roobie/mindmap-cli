@@ -82,4 +82,4 @@
 
 [38] **WF: Git commit messages** - Require good but terse commit messages: short summary (<=72 chars) and optional body; reference ticket IDs; keep commits atomic.
 
-[39] **WF: Bootstrap command** - Runs 'mindmap-cli help' and 'mindmap-cli list' to bootstrap an AI agent's context.
+[39] **WF: Bootstrap command** - Runs 'mindmap-cli help' and 'mindmap-cli list' to bootstrap an AI agent's context; additionally concatenates PROTOCOL_MINDMAP.md (if present) to prime agents to follow the protocol.
