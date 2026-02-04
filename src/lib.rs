@@ -18,14 +18,19 @@ pub enum OutputFormat {
 One-node-per-line format: [N] **Title** - description with [N] references. IDs must be stable numeric values.
 
 EXAMPLES:
-  mindmap show 10
-  mindmap list --type AE --grep auth
-  mindmap add --type AE --title "AuthService" --desc "Handles auth [12]"
-  mindmap edit 12               # opens $EDITOR for an atomic, validated edit
-  mindmap patch 12 --title "AuthSvc" --desc "Updated desc"   # partial update (PATCH)
-  mindmap put 12 --line "[31] **WF: Example** - Full line text [12]"   # full-line replace (PUT)
-  mindmap graph 10 | dot -Tpng > graph.png   # generate neighborhood graph
-  mindmap lint
+  mindmap-cli show 10
+  mindmap-cli list --type AE --grep auth
+  mindmap-cli add --type AE --title "AuthService" --desc "Handles auth [12]"
+  mindmap-cli edit 12               # opens $EDITOR for an atomic, validated edit
+  mindmap-cli patch 12 --title "AuthSvc" --desc "Updated desc"   # partial update (PATCH)
+  mindmap-cli put 12 --line "[31] **WF: Example** - Full line text [12]"   # full-line replace (PUT)
+  mindmap-cli graph 10 | dot -Tpng > graph.png   # generate neighborhood graph
+  mindmap-cli lint
+  mindmap-cli batch --input - --dry-run <<EOF  # atomic batch from stdin
+  add --type WF --title "New Workflow" --desc "Steps here"
+  patch 15 --title "Updated Workflow"
+  delete 19
+  EOF
 
 Notes:
   - Default file: ./MINDMAP.md (override with --file)
