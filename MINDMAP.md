@@ -22,7 +22,7 @@
 
 ---
 
-[11] **WF: Dogfooding** - VERY IMPORTANT: use the [`mindmap-cli`](./target/debug/mindmap-cli) to query and update this file (MINDMAP.md). Run `target/debug/mindmap-cli help` to learn how.
+[11] **WF: MINDMAP interactions** - VERY IMPORTANT💯: it is **mandatory** to use the program `mindmap-cli` to interact with MINDMAP files. I.e. querying, reading and updating shall be done by invoking `mindmap-cli`. It is forbidden to update METADATA.md directly. Learn how to use this tool by invoking `mindmap-cli help`. Required reading: [PROTOCOL_MINDMAP.md](./PROTOCOL_MINDMAP.md)
 
 [12] **WF: Development basics** - Make sure to run `mise run fmt` after each edit, so that the rust source code is ensured to be canonically formatted
 
