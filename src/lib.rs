@@ -274,11 +274,10 @@ impl Mindmap {
             // If this line is a node and the immediate next line is also a node,
             // insert a single empty line between them. We only insert when nodes
             // are adjacent (no blank or non-node line in between).
-            if parse_node_line(&line, i).is_ok() && i + 1 < orig.len() {
-                if parse_node_line(&orig[i + 1], i + 1).is_ok() {
+            if parse_node_line(&line, i).is_ok() && i + 1 < orig.len()
+                && parse_node_line(&orig[i + 1], i + 1).is_ok() {
                     new_lines.push(String::new());
                 }
-            }
         }
 
         // No change
