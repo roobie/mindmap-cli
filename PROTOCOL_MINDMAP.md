@@ -25,6 +25,17 @@ Summary workflow (mandatory)
 2) Plan
    - Decide whether to `add`, `patch`, `put`, `deprecate`, or `delete`.
    - If removing a node with incoming refs, update/redirect those refs first.
+   - For single operations, use the corresponding command directly.
+   - For multiple operations, consider using `batch` mode:
+     ```bash
+     mindmap-cli batch --input - --format lines <<EOF
+     add --type 'AE' --title 'Entry Points' --desc '...'
+     patch 12 --title 'WF: Project overview' --desc '...'
+     delete 13
+     deprecate 14 --to 31
+     EOF
+     ```
+     Use `--dry-run` to preview changes before committing. Batch mode is atomic: all-or-nothing.
    - If several nodes need to be added, updated and/or deleted in a batch; then produce a `.sh` file that contains the changeset, e.g.
 ```bash
 mindmap-cli patch 12 --title 'WF: Project overview & purpose' --desc '...'
@@ -64,7 +75,26 @@ Exceptions & fallback
 - If `mindmap-cli` cannot express a legitimate necessary change (rare), capture the failing command and error output and request explicit approval before making any direct edits to MINDMAP.md. Direct edits are allowed only with explicit approval and must be followed by lint/refs checks.
 - Orphaned items are those that neither are referenced or refers to other nodes. Having any number of orphans is **not** exceptional. Determine which nodes are orphans by `mindmap-cli orphans`.
 
+Batch mode (atomic multi-operation edits)
+- Use `mindmap-cli batch` when applying multiple non-interactive operations atomically:
+  - Supported operations: `add`, `patch`, `put`, `delete`, `deprecate`, `verify`.
+  - Input format options:
+    - `--format lines` (default): each line is a CLI-style invocation (e.g., `add --type WF --title X --desc Y`). Use double-quotes for multi-word arguments.
+    - `--format json`: each operation is a JSON object in an array (e.g., `[{"op": "add", "type": "WF", "title": "X", "desc": "Y"}, ...]`).
+  - Flags:
+    - `--dry-run`: preview changes without writing to file.
+    - `--fix`: auto-fix spacing and duplicated type prefixes before committing.
+  - Concurrency safety: batch mode computes a blake3 hash of the target file at start and verifies the hash again before writing. If the file was modified by another process between start and commit, the batch aborts with an error and no changes are written. This prevents race conditions.
+  - Atomicity: if any operation fails during parsing or execution, the entire batch is rejected and no changes are persisted.
+  - Example:
+    ```bash
+    mindmap-cli batch --input batch-ops.txt --fix
+    # or from stdin
+    cat ops.txt | mindmap-cli batch --input - --dry-run
+    ```
+
 Revision history
+- v3.1 - adds batch mode documentation and concurrency safety guarantees
 - v3.0 - adds wording about batch updating
 - v2.0 - wording updated to be clearer.
 - v1.0 — created and adopted (automated by assistant) — use `mindmap-cli` for all future edits.

@@ -85,3 +85,5 @@
 [39] **WF: Bootstrap command** - Runs 'mindmap-cli help' and 'mindmap-cli list' to bootstrap an AI agent's context; additionally concatenates PROTOCOL_MINDMAP.md (if present) to prime agents to follow the protocol.
 
 [40] **WF: Lint auto-fix** - Use 'mindmap-cli lint --fix' to automatically fix common issues: ensures exactly one blank line between node lines (collapses multiple blanks), removes duplicated type prefixes in titles (e.g. AE: AE: Foo becomes AE: Foo).
+
+[41] **WF: Batch atomic operations** - Use 'mindmap-cli batch' to apply multiple operations atomically. Supports --format lines (CLI-style) or json, --dry-run preview, and --fix auto-correction. Includes blake3 hash concurrency guard to detect and reject commits if file changed mid-batch.
