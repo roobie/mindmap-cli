@@ -66,6 +66,27 @@ Extend mindmap-cli to support references to external MINDMAP files using markdow
 - Complexity: Parsing more complex; ensure backward compatibility with existing `[123]` refs.
 - Scope: Start with read-only navigation; add editing later.
 
+## Safety Nets
+To prevent issues with infinite loops, resource exhaustion, and security vulnerabilities during file navigation:
+
+1. **Visited Files Tracking**:
+   - Maintain a `HashSet<PathBuf>` of canonicalized paths for visited files.
+   - Before loading an external file, check if its canonical path is already in the set. If yes, skip with a warning (cycle detected).
+   - This prevents circular references (e.g., A refs B, B refs A).
+
+2. **Max Depth Cap**:
+   - Enforce a recursion depth limit (e.g., 1000 levels) when following references across files.
+   - Track depth in recursive calls; if exceeded, warn and stop following.
+   - Prevents infinite chains of references.
+
+3. **Other Safety Nets**:
+   - **Path Canonicalization**: Always canonicalize paths to handle `..`, symlinks, and duplicates. Use `std::fs::canonicalize` or similar.
+   - **File Size Limit**: Check file size before loading (e.g., max 10MB) to avoid loading huge files.
+   - **Timeout**: If loading takes too long (e.g., network paths), implement a timeout (though local files are fast).
+   - **Path Validation**: Restrict paths to relative or within a trusted directory; block absolute paths or `/` starts.
+   - **Error Recovery**: On file load failure, log warning but continue with available data.
+   - **Caching Limits**: Limit cache size (e.g., max 100 files) to prevent memory exhaustion.
+
 ## Acceptance Criteria
 - `mindmap show 10 --follow-files` shows external refs.
 - `mindmap graph 10 --follow-files | dot -Tpng` includes cross-file nodes.
