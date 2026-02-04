@@ -154,7 +154,6 @@ pub enum Commands {
         #[arg(long)]
         fix: bool,
     },
-
 }
 
 #[derive(Debug, Clone)]
@@ -1088,6 +1087,312 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
     Ok(dot)
 }
 
+/// Compute blake3 hash of content (hex encoded)
+fn blake3_hash(content: &[u8]) -> String {
+    blake3::hash(content).to_hex().to_string()
+}
+
+#[derive(Debug, Clone)]
+enum BatchOp {
+    Add {
+        type_prefix: String,
+        title: String,
+        desc: String,
+    },
+    Patch {
+        id: u32,
+        type_prefix: Option<String>,
+        title: Option<String>,
+        desc: Option<String>,
+    },
+    Put {
+        id: u32,
+        line: String,
+    },
+    Delete {
+        id: u32,
+        force: bool,
+    },
+    Deprecate {
+        id: u32,
+        to: u32,
+    },
+    Verify {
+        id: u32,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BatchResult {
+    pub total_ops: usize,
+    pub applied: usize,
+    pub added_ids: Vec<u32>,
+    pub patched_ids: Vec<u32>,
+    pub deleted_ids: Vec<u32>,
+    pub warnings: Vec<String>,
+}
+
+/// Parse a batch operation from a JSON value
+fn parse_batch_op_json(val: &serde_json::Value) -> Result<BatchOp> {
+    let obj = val
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("Op must be a JSON object"))?;
+    let op_type = obj
+        .get("op")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Missing 'op' field"))?;
+
+    match op_type {
+        "add" => {
+            let type_prefix = obj
+                .get("type")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("add: missing 'type' field"))?
+                .to_string();
+            let title = obj
+                .get("title")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("add: missing 'title' field"))?
+                .to_string();
+            let desc = obj
+                .get("desc")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("add: missing 'desc' field"))?
+                .to_string();
+            Ok(BatchOp::Add {
+                type_prefix,
+                title,
+                desc,
+            })
+        }
+        "patch" => {
+            let id = obj
+                .get("id")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("patch: missing 'id' field"))?
+                as u32;
+            let type_prefix = obj.get("type").and_then(|v| v.as_str()).map(String::from);
+            let title = obj.get("title").and_then(|v| v.as_str()).map(String::from);
+            let desc = obj.get("desc").and_then(|v| v.as_str()).map(String::from);
+            Ok(BatchOp::Patch {
+                id,
+                type_prefix,
+                title,
+                desc,
+            })
+        }
+        "put" => {
+            let id = obj
+                .get("id")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("put: missing 'id' field"))?
+                as u32;
+            let line = obj
+                .get("line")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow::anyhow!("put: missing 'line' field"))?
+                .to_string();
+            Ok(BatchOp::Put { id, line })
+        }
+        "delete" => {
+            let id = obj
+                .get("id")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("delete: missing 'id' field"))?
+                as u32;
+            let force = obj.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+            Ok(BatchOp::Delete { id, force })
+        }
+        "deprecate" => {
+            let id = obj
+                .get("id")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("deprecate: missing 'id' field"))?
+                as u32;
+            let to = obj
+                .get("to")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("deprecate: missing 'to' field"))?
+                as u32;
+            Ok(BatchOp::Deprecate { id, to })
+        }
+        "verify" => {
+            let id = obj
+                .get("id")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("verify: missing 'id' field"))?
+                as u32;
+            Ok(BatchOp::Verify { id })
+        }
+        other => Err(anyhow::anyhow!("Unknown op type: {}", other)),
+    }
+}
+
+/// Parse a batch operation from a CLI line (e.g., "add --type WF --title X --desc Y")
+fn parse_batch_op_line(line: &str) -> Result<BatchOp> {
+    use shell_words;
+
+    let parts = shell_words::split(line)?;
+    if parts.is_empty() {
+        return Err(anyhow::anyhow!("Empty operation line"));
+    }
+
+    match parts[0].as_str() {
+        "add" => {
+            let mut type_prefix = String::new();
+            let mut title = String::new();
+            let mut desc = String::new();
+            let mut i = 1;
+            while i < parts.len() {
+                match parts[i].as_str() {
+                    "--type" => {
+                        i += 1;
+                        type_prefix = parts
+                            .get(i)
+                            .ok_or_else(|| anyhow::anyhow!("add: --type requires value"))?
+                            .clone();
+                    }
+                    "--title" => {
+                        i += 1;
+                        title = parts
+                            .get(i)
+                            .ok_or_else(|| anyhow::anyhow!("add: --title requires value"))?
+                            .clone();
+                    }
+                    "--desc" => {
+                        i += 1;
+                        desc = parts
+                            .get(i)
+                            .ok_or_else(|| anyhow::anyhow!("add: --desc requires value"))?
+                            .clone();
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            if type_prefix.is_empty() || title.is_empty() || desc.is_empty() {
+                return Err(anyhow::anyhow!("add: requires --type, --title, --desc"));
+            }
+            Ok(BatchOp::Add {
+                type_prefix,
+                title,
+                desc,
+            })
+        }
+        "patch" => {
+            let id: u32 = parts
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("patch: missing id"))?
+                .parse()?;
+            let mut type_prefix: Option<String> = None;
+            let mut title: Option<String> = None;
+            let mut desc: Option<String> = None;
+            let mut i = 2;
+            while i < parts.len() {
+                match parts[i].as_str() {
+                    "--type" => {
+                        i += 1;
+                        type_prefix = Some(
+                            parts
+                                .get(i)
+                                .ok_or_else(|| anyhow::anyhow!("patch: --type requires value"))?
+                                .clone(),
+                        );
+                    }
+                    "--title" => {
+                        i += 1;
+                        title = Some(
+                            parts
+                                .get(i)
+                                .ok_or_else(|| anyhow::anyhow!("patch: --title requires value"))?
+                                .clone(),
+                        );
+                    }
+                    "--desc" => {
+                        i += 1;
+                        desc = Some(
+                            parts
+                                .get(i)
+                                .ok_or_else(|| anyhow::anyhow!("patch: --desc requires value"))?
+                                .clone(),
+                        );
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            Ok(BatchOp::Patch {
+                id,
+                type_prefix,
+                title,
+                desc,
+            })
+        }
+        "put" => {
+            let id: u32 = parts
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("put: missing id"))?
+                .parse()?;
+            let mut line = String::new();
+            let mut i = 2;
+            while i < parts.len() {
+                if parts[i] == "--line" {
+                    i += 1;
+                    line = parts
+                        .get(i)
+                        .ok_or_else(|| anyhow::anyhow!("put: --line requires value"))?
+                        .clone();
+                    break;
+                }
+                i += 1;
+            }
+            if line.is_empty() {
+                return Err(anyhow::anyhow!("put: requires --line"));
+            }
+            Ok(BatchOp::Put { id, line })
+        }
+        "delete" => {
+            let id: u32 = parts
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("delete: missing id"))?
+                .parse()?;
+            let force = parts.contains(&"--force".to_string());
+            Ok(BatchOp::Delete { id, force })
+        }
+        "deprecate" => {
+            let id: u32 = parts
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("deprecate: missing id"))?
+                .parse()?;
+            let mut to: Option<u32> = None;
+            let mut i = 2;
+            while i < parts.len() {
+                if parts[i] == "--to" {
+                    i += 1;
+                    to = Some(
+                        parts
+                            .get(i)
+                            .ok_or_else(|| anyhow::anyhow!("deprecate: --to requires value"))?
+                            .parse()?,
+                    );
+                    break;
+                }
+                i += 1;
+            }
+            let to = to.ok_or_else(|| anyhow::anyhow!("deprecate: requires --to"))?;
+            Ok(BatchOp::Deprecate { id, to })
+        }
+        "verify" => {
+            let id: u32 = parts
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("verify: missing id"))?
+                .parse()?;
+            Ok(BatchOp::Verify { id })
+        }
+        other => Err(anyhow::anyhow!("Unknown batch command: {}", other)),
+    }
+}
+
 // mod ui;
 
 pub fn run(cli: Cli) -> Result<()> {
@@ -1495,6 +1800,270 @@ pub fn run(cli: Cli) -> Result<()> {
                 } else {
                     for it in items {
                         println!("{}", it);
+                    }
+                }
+            }
+        }
+        Commands::Batch {
+            input,
+            format,
+            dry_run,
+            fix,
+        } => {
+            // Reject if writing to stdin source
+            if path.as_os_str() == "-" {
+                return Err(anyhow::anyhow!(
+                    "Cannot batch: mindmap was loaded from stdin ('-'); use --file <path> to save changes"
+                ));
+            }
+
+            // Compute base file hash before starting
+            let base_content = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read base file {}", path.display()))?;
+            let base_hash = blake3_hash(base_content.as_bytes());
+
+            // Read batch input
+            let mut buf = String::new();
+            match input {
+                Some(p) if p.as_os_str() == "-" => {
+                    std::io::stdin().read_to_string(&mut buf)?;
+                }
+                Some(p) => {
+                    buf = std::fs::read_to_string(p)?;
+                }
+                None => {
+                    std::io::stdin().read_to_string(&mut buf)?;
+                }
+            }
+
+            // Parse ops
+            let mut ops: Vec<BatchOp> = Vec::new();
+            if format == "json" {
+                // Parse JSON array of op objects
+                let arr = serde_json::from_str::<Vec<serde_json::Value>>(&buf)?;
+                for (i, val) in arr.iter().enumerate() {
+                    match parse_batch_op_json(val) {
+                        Ok(op) => ops.push(op),
+                        Err(e) => {
+                            return Err(anyhow::anyhow!("Failed to parse batch op {}: {}", i, e));
+                        }
+                    }
+                }
+            } else {
+                // Parse lines format (space-separated, respecting double-quotes)
+                for (i, line) in buf.lines().enumerate() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    match parse_batch_op_line(line) {
+                        Ok(op) => ops.push(op),
+                        Err(e) => {
+                            return Err(anyhow::anyhow!(
+                                "Failed to parse batch line {}: {}",
+                                i + 1,
+                                e
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // Clone mm and work on clone (do not persist until all ops succeed)
+            let mut mm_clone = Mindmap::from_string(base_content.clone(), path.clone())?;
+
+            // Replay ops
+            let mut result = BatchResult {
+                total_ops: ops.len(),
+                applied: 0,
+                added_ids: Vec::new(),
+                patched_ids: Vec::new(),
+                deleted_ids: Vec::new(),
+                warnings: Vec::new(),
+            };
+
+            for (i, op) in ops.iter().enumerate() {
+                match op {
+                    BatchOp::Add {
+                        type_prefix,
+                        title,
+                        desc,
+                    } => match cmd_add(&mut mm_clone, type_prefix, title, desc) {
+                        Ok(id) => {
+                            result.added_ids.push(id);
+                            result.applied += 1;
+                        }
+                        Err(e) => {
+                            return Err(anyhow::anyhow!("Op {}: add failed: {}", i, e));
+                        }
+                    },
+                    BatchOp::Patch {
+                        id,
+                        type_prefix,
+                        title,
+                        desc,
+                    } => {
+                        match cmd_patch(
+                            &mut mm_clone,
+                            *id,
+                            type_prefix.as_deref(),
+                            title.as_deref(),
+                            desc.as_deref(),
+                            false,
+                        ) {
+                            Ok(_) => {
+                                result.patched_ids.push(*id);
+                                result.applied += 1;
+                            }
+                            Err(e) => {
+                                return Err(anyhow::anyhow!("Op {}: patch failed: {}", i, e));
+                            }
+                        }
+                    }
+                    BatchOp::Put { id, line } => match cmd_put(&mut mm_clone, *id, line, false) {
+                        Ok(_) => {
+                            result.patched_ids.push(*id);
+                            result.applied += 1;
+                        }
+                        Err(e) => {
+                            return Err(anyhow::anyhow!("Op {}: put failed: {}", i, e));
+                        }
+                    },
+                    BatchOp::Delete { id, force } => match cmd_delete(&mut mm_clone, *id, *force) {
+                        Ok(_) => {
+                            result.deleted_ids.push(*id);
+                            result.applied += 1;
+                        }
+                        Err(e) => {
+                            return Err(anyhow::anyhow!("Op {}: delete failed: {}", i, e));
+                        }
+                    },
+                    BatchOp::Deprecate { id, to } => match cmd_deprecate(&mut mm_clone, *id, *to) {
+                        Ok(_) => {
+                            result.patched_ids.push(*id);
+                            result.applied += 1;
+                        }
+                        Err(e) => {
+                            return Err(anyhow::anyhow!("Op {}: deprecate failed: {}", i, e));
+                        }
+                    },
+                    BatchOp::Verify { id } => match cmd_verify(&mut mm_clone, *id) {
+                        Ok(_) => {
+                            result.patched_ids.push(*id);
+                            result.applied += 1;
+                        }
+                        Err(e) => {
+                            return Err(anyhow::anyhow!("Op {}: verify failed: {}", i, e));
+                        }
+                    },
+                }
+            }
+
+            // Apply auto-fixes if requested
+            if fix {
+                match mm_clone.apply_fixes() {
+                    Ok(report) => {
+                        if !report.spacing.is_empty() {
+                            result.warnings.push(format!(
+                                "Auto-fixed: inserted {} spacing lines",
+                                report.spacing.len()
+                            ));
+                        }
+                        for tf in &report.title_fixes {
+                            result.warnings.push(format!(
+                                "Auto-fixed title for node {}: '{}' -> '{}'",
+                                tf.id, tf.old, tf.new
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        return Err(anyhow::anyhow!("Failed to apply fixes: {}", e));
+                    }
+                }
+            }
+
+            // Run lint and collect warnings (non-blocking)
+            match cmd_lint(&mm_clone) {
+                Ok(warnings) => {
+                    result.warnings.extend(warnings);
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Lint check failed: {}", e));
+                }
+            }
+
+            if dry_run {
+                // Print what would be written
+                if matches!(cli.output, OutputFormat::Json) {
+                    let obj = serde_json::json!({
+                        "command": "batch",
+                        "dry_run": true,
+                        "result": result,
+                        "content": mm_clone.lines.join("\n") + "\n"
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    eprintln!("--- DRY RUN: No changes written ---");
+                    eprintln!(
+                        "Would apply {} operations: {} added, {} patched, {} deleted",
+                        result.applied,
+                        result.added_ids.len(),
+                        result.patched_ids.len(),
+                        result.deleted_ids.len()
+                    );
+                    if !result.warnings.is_empty() {
+                        eprintln!("Warnings:");
+                        for w in &result.warnings {
+                            eprintln!("  {}", w);
+                        }
+                    }
+                    println!("{}", mm_clone.lines.join("\n"));
+                }
+            } else {
+                // Check file hash again before writing (concurrency guard)
+                let current_content = fs::read_to_string(&path).with_context(|| {
+                    format!("Failed to re-read file before commit {}", path.display())
+                })?;
+                let current_hash = blake3_hash(current_content.as_bytes());
+
+                if current_hash != base_hash {
+                    return Err(anyhow::anyhow!(
+                        "Cannot commit batch: target file changed since batch began (hash mismatch).\n\
+                         Base hash: {}\n\
+                         Current hash: {}\n\
+                         The file was likely modified by another process. \
+                         Re-run begin your batch on the current file.",
+                        base_hash,
+                        current_hash
+                    ));
+                }
+
+                // Persist changes atomically
+                mm_clone.save()?;
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let obj = serde_json::json!({
+                        "command": "batch",
+                        "dry_run": false,
+                        "result": result
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    eprintln!("Batch applied successfully: {} ops applied", result.applied);
+                    if !result.added_ids.is_empty() {
+                        eprintln!("  Added nodes: {:?}", result.added_ids);
+                    }
+                    if !result.patched_ids.is_empty() {
+                        eprintln!("  Patched nodes: {:?}", result.patched_ids);
+                    }
+                    if !result.deleted_ids.is_empty() {
+                        eprintln!("  Deleted nodes: {:?}", result.deleted_ids);
+                    }
+                    if !result.warnings.is_empty() {
+                        eprintln!("Warnings:");
+                        for w in &result.warnings {
+                            eprintln!("  {}", w);
+                        }
                     }
                 }
             }
@@ -2019,6 +2588,107 @@ mod tests {
         let content = std::fs::read_to_string(file.path())?;
         // Should have exactly one blank line between nodes
         assert_eq!(content, "[1] **AE: A** - a\n\n[2] **AE: B** - b\n");
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_batch_op_parse_line_add() -> Result<()> {
+        let line = "add --type WF --title Test --desc desc";
+        let op = parse_batch_op_line(line)?;
+        match op {
+            BatchOp::Add {
+                type_prefix,
+                title,
+                desc,
+            } => {
+                assert_eq!(type_prefix, "WF");
+                assert_eq!(title, "Test");
+                assert_eq!(desc, "desc");
+            }
+            _ => panic!("Expected Add op"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_batch_op_parse_line_patch() -> Result<()> {
+        let line = "patch 1 --title NewTitle";
+        let op = parse_batch_op_line(line)?;
+        match op {
+            BatchOp::Patch {
+                id,
+                title,
+                type_prefix,
+                desc,
+            } => {
+                assert_eq!(id, 1);
+                assert_eq!(title, Some("NewTitle".to_string()));
+                assert_eq!(type_prefix, None);
+                assert_eq!(desc, None);
+            }
+            _ => panic!("Expected Patch op"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_batch_op_parse_line_delete() -> Result<()> {
+        let line = "delete 5 --force";
+        let op = parse_batch_op_line(line)?;
+        match op {
+            BatchOp::Delete { id, force } => {
+                assert_eq!(id, 5);
+                assert!(force);
+            }
+            _ => panic!("Expected Delete op"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_batch_hash_concurrency_check() -> Result<()> {
+        // Verify blake3_hash function works
+        let content1 = "hello world";
+        let content2 = "hello world";
+        let content3 = "hello world!";
+
+        let hash1 = blake3_hash(content1.as_bytes());
+        let hash2 = blake3_hash(content2.as_bytes());
+        let hash3 = blake3_hash(content3.as_bytes());
+
+        assert_eq!(hash1, hash2); // identical content = same hash
+        assert_ne!(hash1, hash3); // different content = different hash
+        Ok(())
+    }
+
+    #[test]
+    fn test_batch_simple_add() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: A** - a\n")?;
+
+        // Simulate batch with one add operation (use quotes for multi-word args)
+        let batch_input = r#"add --type WF --title Work --desc "do work""#;
+        let ops = vec![parse_batch_op_line(batch_input)?];
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        for op in ops {
+            match op {
+                BatchOp::Add {
+                    type_prefix,
+                    title,
+                    desc,
+                } => {
+                    cmd_add(&mut mm, &type_prefix, &title, &desc)?;
+                }
+                _ => {}
+            }
+        }
+        mm.save()?;
+
+        let content = std::fs::read_to_string(file.path())?;
+        assert!(content.contains("WF: Work") && content.contains("do work"));
         temp.close()?;
         Ok(())
     }
