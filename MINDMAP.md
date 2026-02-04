@@ -44,7 +44,7 @@
 
 [18] **AE: mindmap-cli default** - Default mindmap file changed to MINDMAP.md (removed .core) (updated 2026-02-03)
 
-[19] **DONE: Lint & Validation** - Implemented syntax checks, duplicate ID detection, missing-ref warnings and orphan detection; added unit and integration tests for lint (updated 2026-02-03)
+[19] **DONE: Lint & Validation** - Implemented syntax checks, duplicate ID detection, missing-ref warnings and orphan detection; added unit and integration tests for lint; lint --fix auto-fixes spacing and duplicated type prefixes (updated 2026-02-04)
 
 [21] **DR: Default filename = MINDMAP.md** - Default mindmap filename is ./MINDMAP.md; CLI and tests rely on this default; override with --file if needed.
 
@@ -83,3 +83,5 @@
 [38] **WF: Git commit messages** - Require good but terse commit messages: short summary (<=72 chars) and optional body; reference ticket IDs; keep commits atomic.
 
 [39] **WF: Bootstrap command** - Runs 'mindmap-cli help' and 'mindmap-cli list' to bootstrap an AI agent's context; additionally concatenates PROTOCOL_MINDMAP.md (if present) to prime agents to follow the protocol.
+
+[40] **WF: Lint auto-fix** - Use 'mindmap-cli lint --fix' to automatically fix common issues: ensures exactly one blank line between node lines (collapses multiple blanks), removes duplicated type prefixes in titles (e.g. AE: AE: Foo becomes AE: Foo).
