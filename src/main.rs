@@ -22,7 +22,7 @@ EXAMPLES:
   mindmap add --type AE --title "AuthService" --desc "Handles auth [12]"
   mindmap edit 12               # opens $EDITOR for an atomic, validated edit
   mindmap patch 12 --title "AuthSvc" --desc "Updated desc"   # partial update (PATCH)
-  mindmap put 12 --line "[12] **AE: AuthSvc** - Updated desc [10]"   # full-line replace (PUT)
+  mindmap put 12 --line "[31] **WF: Example** - Full line text [12]"   # full-line replace (PUT)
   mindmap lint
 
 Notes:
@@ -132,7 +132,12 @@ fn main() -> anyhow::Result<()> {
 
     let path = cli.file.unwrap_or_else(|| PathBuf::from("MINDMAP.md"));
 
-    let mut mm = mindmap_cli::Mindmap::load(path)?;
+    // If user passed '-' use stdin as source
+    let mut mm = if path.as_os_str() == "-" {
+        mindmap_cli::Mindmap::load_from_reader(std::io::stdin(), path.clone())?
+    } else {
+        mindmap_cli::Mindmap::load(path.clone())?
+    };
 
     // determine whether to use pretty output (interactive + default format)
     let interactive = atty::is(atty::Stream::Stdout);
@@ -151,6 +156,14 @@ fn main() -> anyhow::Result<()> {
         }
     } else {
         None
+    };
+
+    // helper to reject mutating commands when mm.path == '-'
+    let mut cannot_write_err = |cmd_name: &str| -> anyhow::Error {
+        anyhow::anyhow!(format!(
+            "Cannot {}: mindmap was loaded from stdin ('-'); use --file <path> to save changes",
+            cmd_name
+        ))
     };
 
     match cli.command {
@@ -248,7 +261,15 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Add { r#type, title, desc, strict } => {
+        Commands::Add {
+            r#type,
+            title,
+            desc,
+            strict,
+        } => {
+            if mm.path.as_os_str() == "-" {
+                return Err(cannot_write_err("add"));
+            }
             match (r#type.as_deref(), title.as_deref(), desc.as_deref()) {
                 (Some(tp), Some(tt), Some(dd)) => {
                     let id = mindmap_cli::cmd_add(&mut mm, tp, tt, dd)?;
@@ -264,7 +285,9 @@ fn main() -> anyhow::Result<()> {
                 (None, None, None) => {
                     // editor flow
                     if !atty::is(atty::Stream::Stdin) {
-                        return Err(anyhow::anyhow!("add via editor requires an interactive terminal"));
+                        return Err(anyhow::anyhow!(
+                            "add via editor requires an interactive terminal"
+                        ));
                     }
                     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
                     let id = mindmap_cli::cmd_add_editor(&mut mm, &editor, strict)?;
@@ -278,11 +301,16 @@ fn main() -> anyhow::Result<()> {
                     eprintln!("Added node [{}]", id);
                 }
                 _ => {
-                    return Err(anyhow::anyhow!("add requires either all of --type,--title,--desc or none (editor)"));
+                    return Err(anyhow::anyhow!(
+                        "add requires either all of --type,--title,--desc or none (editor)"
+                    ));
                 }
             }
         }
         Commands::Deprecate { id, to } => {
+            if mm.path.as_os_str() == "-" {
+                return Err(cannot_write_err("deprecate"));
+            }
             mindmap_cli::cmd_deprecate(&mut mm, id, to)?;
             mm.save()?;
             if matches!(cli.output, OutputFormat::Json)
@@ -294,6 +322,9 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Deprecated node [{}] → [{}]", id, to);
         }
         Commands::Edit { id } => {
+            if mm.path.as_os_str() == "-" {
+                return Err(cannot_write_err("edit"));
+            }
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
             mindmap_cli::cmd_edit(&mut mm, id, &editor)?;
             mm.save()?;
@@ -312,6 +343,9 @@ fn main() -> anyhow::Result<()> {
             desc,
             strict,
         } => {
+            if mm.path.as_os_str() == "-" {
+                return Err(cannot_write_err("patch"));
+            }
             mindmap_cli::cmd_patch(
                 &mut mm,
                 id,
@@ -330,6 +364,9 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Patched node [{}]", id);
         }
         Commands::Put { id, line, strict } => {
+            if mm.path.as_os_str() == "-" {
+                return Err(cannot_write_err("put"));
+            }
             mindmap_cli::cmd_put(&mut mm, id, &line, strict)?;
             mm.save()?;
             if matches!(cli.output, OutputFormat::Json)
@@ -341,6 +378,9 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Put node [{}]", id);
         }
         Commands::Verify { id } => {
+            if mm.path.as_os_str() == "-" {
+                return Err(cannot_write_err("verify"));
+            }
             mindmap_cli::cmd_verify(&mut mm, id)?;
             mm.save()?;
             if matches!(cli.output, OutputFormat::Json)
@@ -352,6 +392,9 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Marked node [{}] for verification", id);
         }
         Commands::Delete { id, force } => {
+            if mm.path.as_os_str() == "-" {
+                return Err(cannot_write_err("delete"));
+            }
             mindmap_cli::cmd_delete(&mut mm, id, force)?;
             mm.save()?;
             if matches!(cli.output, OutputFormat::Json) {

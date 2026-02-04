@@ -177,3 +177,74 @@ fn integration_delete_flow() -> Result<(), Box<dyn std::error::Error>> {
     temp.close()?;
     Ok(())
 }
+
+#[test]
+fn integration_stdin_readonly() -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write as IoWrite;
+    let content = "[1] **AE: A** - base\n[2] **AE: B** - refers [1]\n";
+
+    // list via stdin (manual spawn + write to stdin)
+    let mut cmd = Command::cargo_bin("mindmap-cli")?;
+    let mut child = cmd
+        .arg("--file")
+        .arg("-")
+        .arg("list")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()?;
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(content.as_bytes())?;
+    let out = child.wait_with_output()?;
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("AE: A"));
+
+    // lint via stdin
+    let mut cmd2 = Command::cargo_bin("mindmap-cli")?;
+    let mut child2 = cmd2
+        .arg("--file")
+        .arg("-")
+        .arg("lint")
+        .stdin(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    child2
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(content.as_bytes())?;
+    let out2 = child2.wait_with_output()?;
+    assert!(out2.status.success());
+    let stderr2 = String::from_utf8_lossy(&out2.stderr);
+    assert!(stderr2.contains("Lint"));
+
+    // mutating command via stdin should fail
+    let mut cmd3 = Command::cargo_bin("mindmap-cli")?;
+    let mut child3 = cmd3
+        .arg("--file")
+        .arg("-")
+        .arg("add")
+        .arg("--type")
+        .arg("AE")
+        .arg("--title")
+        .arg("X")
+        .arg("--desc")
+        .arg("d")
+        .stdin(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    child3
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(content.as_bytes())?;
+    let out3 = child3.wait_with_output()?;
+    assert!(!out3.status.success());
+    let stderr3 = String::from_utf8_lossy(&out3.stderr);
+    assert!(stderr3.contains("Cannot add"));
+
+    Ok(())
+}
