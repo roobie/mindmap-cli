@@ -131,6 +131,9 @@ pub enum Commands {
 
     /// Show graph neighborhood for a node (DOT format for Graphviz)
     Graph { id: u32 },
+
+    /// Bootstrap: print help and list to bootstrap an AI agent's context
+    Bootstrap,
 }
 
 #[derive(Debug, Clone)]
@@ -1270,6 +1273,38 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Graph { id } => {
             let dot = cmd_graph(&mm, id)?;
             println!("{}", dot);
+        }
+        Commands::Bootstrap => {
+            // Produce help text and then list nodes to bootstrap an agent's context.
+            use clap::CommandFactory;
+
+            let mut cmd = Cli::command();
+            // capture help into string
+            let mut buf: Vec<u8> = Vec::new();
+            cmd.write_long_help(&mut buf)?;
+            let help_str = String::from_utf8(buf)?;
+
+            let items = cmd_list(&mm, None, None);
+
+            if matches!(cli.output, OutputFormat::Json) {
+                let arr: Vec<_> = items
+                    .into_iter()
+                    .map(|line| serde_json::json!({"line": line}))
+                    .collect();
+                let obj = serde_json::json!({"command": "bootstrap", "help": help_str, "items": arr});
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                // print help
+                println!("{}", help_str);
+                // print list
+                if let Some(p) = &printer {
+                    p.list(&items)?;
+                } else {
+                    for it in items {
+                        println!("{}", it);
+                    }
+                }
+            }
         }
     }
 
