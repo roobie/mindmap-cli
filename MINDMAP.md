@@ -81,3 +81,5 @@
 [37] **DONE: External reference syntax** - Parser now supports [id](./file.md) markdown links for cross-file references; Reference enum extended with External variant; groundwork for multi-file mindmaps [9]
 
 [38] **WF: Git commit messages** - Require good but terse commit messages: short summary (<=72 chars) and optional body; reference ticket IDs; keep commits atomic.
+
+[39] **WF: Bootstrap command** - Runs 'mindmap-cli help' and 'mindmap-cli list' to bootstrap an AI agent's context.
