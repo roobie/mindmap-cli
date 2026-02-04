@@ -195,13 +195,17 @@ impl Mindmap {
         })
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&mut self) -> Result<()> {
         // prevent persisting when loaded from stdin (path == "-")
         if self.path.as_os_str() == "-" {
             return Err(anyhow::anyhow!(
                 "Cannot save: mindmap was loaded from stdin ('-'); use --file <path> to save changes"
             ));
         }
+
+        // Normalize spacing in-place so node lines are separated by at least one blank
+        // line before writing. This updates self.lines and internal node indices.
+        self.normalize_spacing()?;
 
         // atomic write: write to a temp file in the same dir then persist
         let dir = self
@@ -227,7 +231,49 @@ impl Mindmap {
     pub fn get_node(&self, id: u32) -> Option<&Node> {
         self.by_id.get(&id).map(|&idx| &self.nodes[idx])
     }
+
+    /// Ensure there is at least one empty line between any two adjacent node lines.
+    /// This inserts a blank line when two node lines are directly adjacent, and
+    /// rebuilds internal node indices accordingly. The operation is idempotent.
+    pub fn normalize_spacing(&mut self) -> Result<()> {
+        // Quick exit
+        if self.lines.is_empty() {
+            return Ok(());
+        }
+
+        let orig = self.lines.clone();
+        let mut new_lines: Vec<String> = Vec::new();
+
+        for i in 0..orig.len() {
+            let line = orig[i].clone();
+            new_lines.push(line.clone());
+
+            // If this line is a node and the immediate next line is also a node,
+            // insert a single empty line between them. We only insert when nodes
+            // are adjacent (no blank or non-node line in between).
+            if parse_node_line(&line, i).is_ok() && i + 1 < orig.len() {
+                if parse_node_line(&orig[i + 1], i + 1).is_ok() {
+                    new_lines.push(String::new());
+                }
+            }
+        }
+
+        // No change
+        if new_lines == orig {
+            return Ok(());
+        }
+
+        // Rebuild internal state from normalized content so line_index/by_id are correct
+        let content = new_lines.join("\n") + "\n";
+        let normalized_mm = Mindmap::from_string(content, self.path.clone())?;
+        self.lines = normalized_mm.lines;
+        self.nodes = normalized_mm.nodes;
+        self.by_id = normalized_mm.by_id;
+
+        Ok(())
+    }
 }
+
 
 // Helper: lightweight manual parser for the strict node format
 // Format: ^\[(\d+)\] \*\*(.+?)\*\* - (.*)$
@@ -1553,7 +1599,7 @@ mod tests {
         let temp = assert_fs::TempDir::new()?;
         let file = temp.child("MINDMAP.md");
         file.write_str("[1] **AE: One** - first\n")?;
-        let mm = Mindmap::load_from_reader(
+        let mut mm = Mindmap::load_from_reader(
             std::io::Cursor::new("[1] **AE: One** - first\n"),
             PathBuf::from("-"),
         )?;
@@ -1585,5 +1631,53 @@ mod tests {
             extract_refs_from_str("[234](./file.md)", None),
             vec![Reference::External(234, "./file.md".to_string())]
         );
+    }
+
+    #[test]
+    fn test_normalize_adjacent_nodes() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: A** - a\n[2] **AE: B** - b\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        mm.save()?;
+
+        let content = std::fs::read_to_string(file.path())?;
+        assert_eq!(content, "[1] **AE: A** - a\n\n[2] **AE: B** - b\n");
+        // line indices: node 1 at 0, blank at 1, node 2 at 2
+        assert_eq!(mm.get_node(2).unwrap().line_index, 2);
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_normalize_idempotent() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: A** - a\n[2] **AE: B** - b\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        mm.normalize_spacing()?;
+        let snapshot = mm.lines.clone();
+        mm.normalize_spacing()?;
+        assert_eq!(mm.lines, snapshot);
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_preserve_non_node_lines() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: A** - a\nHeader line\n[2] **AE: B** - b\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        mm.save()?;
+
+        let content = std::fs::read_to_string(file.path())?;
+        // Should remain unchanged apart from ensuring trailing newline
+        assert_eq!(content, "[1] **AE: A** - a\nHeader line\n[2] **AE: B** - b\n");
+        temp.close()?;
+        Ok(())
     }
 }

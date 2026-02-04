@@ -45,20 +45,39 @@
 [18] **AE: mindmap-cli default** - Default mindmap file changed to MINDMAP.md (removed .core) (updated 2026-02-03)
 
 [19] **DONE: Lint & Validation** - Implemented syntax checks, duplicate ID detection, missing-ref warnings and orphan detection; added unit and integration tests for lint (updated 2026-02-03)
+
 [21] **DR: Default filename = MINDMAP.md** - Default mindmap filename is ./MINDMAP.md; CLI and tests rely on this default; override with --file if needed.
+
 [22] **DR: Node format regex** - Nodes must follow ^\[(\d+)\] \*\*(.+?)\*\* - (.*)$ (one-node-per-line). Parsers, edit, and lint depend on this exact format.
+
 [23] **DR: ID immutability** - Node numeric IDs are immutable; edits/put/patch must preserve the bracketed id. Tests enforce reject on id change.
+
 [24] **DR: Atomic save strategy** - Writes are atomic: write to temp file in same dir and persist/rename to replace original to avoid partial writes.
+
 [25] **DR: Editor single-line validation** - Edit flow provides a single-line temp file; editor must produce exactly one valid node line or the edit is aborted to prevent file corruption.
+
 [26] **DR: PUT and PATCH semantics** - PUT = full-line replace (id must match); PATCH = partial update of type/title/desc; --strict fails on missing refs.
+
 [27] **DR: Output formats & JSON** - CLI supports --output json to emit structured data on stdout; informational messages and warnings go to stderr to keep stdout machine-actionable.
+
 [28] **DR: Delete semantics** - Delete blocks by default when referenced; use --force to delete and leave dangling refs (lint will report). No automatic cleanup by default.
+
 [29] **DONE: Read stdin** - Implemented support for reading MINDMAP content from stdin via `--file -` for read-only commands; mutating operations are disallowed when source is '-' (use `--file <path>` to persist changes) (updated 2026-02-04)
+
 [30] **DONE: Add from $EDITOR** - `add` editor flow implemented: calling `mindmap-cli add` with no args opens $EDITOR to author a single validated node line which is appended to MINDMAP.md (updated 2026-02-04)
+
 [31] **WF: Protocol for interacting with MINDMAP** - See [PROTOCOL_MINDMAP.md](./PROTOCOL_MINDMAP.md) for the formal protocol describing how to interact with MINDMAP.md (add/edit/lint/orphans flows).
+
 [32] **AE: Manual parser for node lines** - Replaced regex captures with manual parser to avoid repeated compilation and allocations; tests updated (refactor 2026-02-04)
+
 [33] **AE: Parser consolidation** - Removed NODE_RE; cmd_edit uses manual parser as well to avoid any regex usage in hot paths (refactor 2026-02-04)
+
 [34] **AE: CLI refactor to lib.rs and unit tests** - Moved Cli/Commands structs and command logic to lib.rs via run() function; simplified main.rs; added 18+ unit tests for cmd_* functions and error cases; test coverage improved to 50% (from ~31%) using tarpaulin
+
 [35] **PERF: Manual parser benchmarks** - Added criterion benchmarks: parse_node_line (~200ns), mindmap_from_string (~8µs for 3 nodes); quantifies performance of regex-free manual parser
+
 [36] **DONE: Graph subcommand** - Implemented 'mindmap graph <id>' to output 1-hop neighborhood in DOT format for Graphviz; can pipe to 'dot -Tpng > graph.png'
+
 [37] **DONE: External reference syntax** - Parser now supports [id](./file.md) markdown links for cross-file references; Reference enum extended with External variant; groundwork for multi-file mindmaps [9]
+
+[38] **WF: Git commit messages** - Require good but terse commit messages: short summary (<=72 chars) and optional body; reference ticket IDs; keep commits atomic.
