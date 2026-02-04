@@ -53,6 +53,6 @@
 [26] **DR: PUT and PATCH semantics** - PUT = full-line replace (id must match); PATCH = partial update of type/title/desc; --strict fails on missing refs.
 [27] **DR: Output formats & JSON** - CLI supports --output json to emit structured data on stdout; informational messages and warnings go to stderr to keep stdout machine-actionable.
 [28] **DR: Delete semantics** - Delete blocks by default when referenced; use --force to delete and leave dangling refs (lint will report). No automatic cleanup by default.
-[29] **TODO: Read stdin** - The application should allow for switching to stdin mode by supplying the `-` arg, for applicable subcommands
-[30] **TODO: Add from $EDITOR** - If `add` is called without args, it should start EDITOR and add from that tmp file
+[29] **DONE: Read stdin** - Implemented support for reading MINDMAP content from stdin via `--file -` for read-only commands; mutating operations are disallowed when source is '-' (use `--file <path>` to persist changes) (updated 2026-02-04)
+[30] **DONE: Add from $EDITOR** - `add` editor flow implemented: calling `mindmap-cli add` with no args opens $EDITOR to author a single validated node line which is appended to MINDMAP.md (updated 2026-02-04)
 [31] **WF: Protocol for interacting with MINDMAP** - See [PROTOCOL_MINDMAP.md](./PROTOCOL_MINDMAP.md) for the formal protocol describing how to interact with MINDMAP.md (add/edit/lint/orphans flows).

@@ -27,6 +27,7 @@ EXAMPLES:
 
 Notes:
   - Default file: ./MINDMAP.md (override with --file)
+  - Use `--file -` to read a mindmap from stdin for read-only commands (list/show/refs/links/search/lint/orphans). Mutating commands will error when source is `-`.
   - Use the EDITOR env var to control the editor used by 'edit'
 "#
 )]

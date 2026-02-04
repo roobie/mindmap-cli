@@ -17,6 +17,7 @@ Summary workflow (recommended)
    - Run: `mindmap-cli lint` to surface basic format issues.
    - Show node(s): `mindmap-cli show <id>` or `mindmap-cli list --type <TYPE> --grep "<term>"`.
    - Find references: `mindmap-cli refs <id>` and `mindmap-cli links <id>` before modifying or deleting a node.
+   - Read from stdin (read-only): You can supply `--file -` to read a mindmap from stdin for read-only operations (list, show, refs, links, search, lint, orphans). Example: `cat MINDMAP.md | mindmap-cli --file - lint`. Mutating commands (add/put/patch/edit/delete/deprecate/verify) will error when the source is `-`—use a real path with `--file <path>` or operate on the default `./MINDMAP.md` to persist changes.
 
 2) Plan
    - Decide whether to `add`, `patch`, `put`, `deprecate`, or `delete`.

@@ -13,6 +13,7 @@ description = "A CLI program for interacting with MINDMAP files, as described he
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 regex = "1"
+once_cell = "1"
 chrono = "0.4"
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
