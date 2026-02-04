@@ -600,11 +600,10 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     // 2) Duplicate IDs: scan lines for node ids
     let mut id_map: HashMap<u32, Vec<usize>> = HashMap::new();
     for (i, line) in mm.lines.iter().enumerate() {
-        if let Some(caps) = NODE_RE.captures(line) {
-            if let Ok(id) = caps[1].parse::<u32>() {
+        if let Some(caps) = NODE_RE.captures(line)
+            && let Ok(id) = caps[1].parse::<u32>() {
                 id_map.entry(id).or_default().push(i + 1);
             }
-        }
     }
     for (id, locations) in &id_map {
         if locations.len() > 1 {
