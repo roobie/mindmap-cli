@@ -24,6 +24,7 @@ EXAMPLES:
   mindmap edit 12               # opens $EDITOR for an atomic, validated edit
   mindmap patch 12 --title "AuthSvc" --desc "Updated desc"   # partial update (PATCH)
   mindmap put 12 --line "[31] **WF: Example** - Full line text [12]"   # full-line replace (PUT)
+  mindmap graph 10 | dot -Tpng > graph.png   # generate neighborhood graph
   mindmap lint
 
 Notes:
@@ -124,6 +125,9 @@ pub enum Commands {
 
     /// Lint the mindmap for basic issues
     Lint,
+
+    /// Show orphan nodes (no in & no out, excluding META)
+    Orphans,
 
     /// Show graph neighborhood for a node (DOT format for Graphviz)
     Graph { id: u32 },
@@ -813,6 +817,57 @@ pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
     }
 }
 
+pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
+    if !mm.by_id.contains_key(&id) {
+        return Err(anyhow::anyhow!(format!("Node {} not found", id)));
+    }
+
+    // Collect 1-hop neighborhood: self, direct references (out), and nodes that reference self (in)
+    let mut nodes = std::collections::HashSet::new();
+    nodes.insert(id);
+
+    // Outgoing: references from self
+    if let Some(node) = mm.get_node(id) {
+        for &rid in &node.references {
+            nodes.insert(rid);
+        }
+    }
+
+    // Incoming: nodes that reference self
+    for n in &mm.nodes {
+        if n.references.contains(&id) {
+            nodes.insert(n.id);
+        }
+    }
+
+    // Generate DOT
+    let mut dot = String::new();
+    dot.push_str("digraph {\n");
+    dot.push_str("  rankdir=LR;\n");
+
+    // Add nodes
+    for &nid in &nodes {
+        if let Some(node) = mm.get_node(nid) {
+            let label = format!("{}: {}", node.id, node.raw_title.replace("\"", "\\\""));
+            dot.push_str(&format!("  {} [label=\"{}\"];\n", nid, label));
+        }
+    }
+
+    // Add edges: from each node to its references, if both in neighborhood
+    for &nid in &nodes {
+        if let Some(node) = mm.get_node(nid) {
+            for &rid in &node.references {
+                if nodes.contains(&rid) {
+                    dot.push_str(&format!("  {} -> {};\n", nid, rid));
+                }
+            }
+        }
+    }
+
+    dot.push_str("}\n");
+    Ok(dot)
+}
+
 pub fn run(cli: Cli) -> Result<()> {
     let path = cli.file.unwrap_or_else(|| PathBuf::from("MINDMAP.md"));
 
@@ -1111,6 +1166,10 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Commands::Graph { id } => {
+            let dot = cmd_graph(&mm, id)?;
+            println!("{}", dot);
+        }
     }
 
     Ok(())
@@ -1408,6 +1467,23 @@ mod tests {
         let mm = Mindmap::load(file.path().to_path_buf())?;
         let orphans = cmd_orphans(&mm)?;
         assert_eq!(orphans, vec!["1".to_string(), "2".to_string()]);
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_cmd_graph() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: One** - first\n[2] **AE: Two** - refers [1]\n[3] **AE: Three** - also [1]\n")?;
+        let mm = Mindmap::load(file.path().to_path_buf())?;
+        let dot = cmd_graph(&mm, 1)?;
+        assert!(dot.contains("digraph {"));
+        assert!(dot.contains("1 [label=\"1: AE: One\"]"));
+        assert!(dot.contains("2 [label=\"2: AE: Two\"]"));
+        assert!(dot.contains("3 [label=\"3: AE: Three\"]"));
+        assert!(dot.contains("2 -> 1;"));
+        assert!(dot.contains("3 -> 1;"));
         temp.close()?;
         Ok(())
     }
