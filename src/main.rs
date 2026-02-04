@@ -275,10 +275,11 @@ fn main() -> anyhow::Result<()> {
                     let id = mindmap_cli::cmd_add(&mut mm, tp, tt, dd)?;
                     mm.save()?;
                     if matches!(cli.output, OutputFormat::Json)
-                        && let Some(node) = mm.get_node(id) {
-                            let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
-                            println!("{}", serde_json::to_string_pretty(&obj)?);
-                        }
+                        && let Some(node) = mm.get_node(id)
+                    {
+                        let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                        println!("{}", serde_json::to_string_pretty(&obj)?);
+                    }
                     eprintln!("Added node [{}]", id);
                 }
                 (None, None, None) => {
@@ -292,10 +293,11 @@ fn main() -> anyhow::Result<()> {
                     let id = mindmap_cli::cmd_add_editor(&mut mm, &editor, strict)?;
                     mm.save()?;
                     if matches!(cli.output, OutputFormat::Json)
-                        && let Some(node) = mm.get_node(id) {
-                            let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
-                            println!("{}", serde_json::to_string_pretty(&obj)?);
-                        }
+                        && let Some(node) = mm.get_node(id)
+                    {
+                        let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                        println!("{}", serde_json::to_string_pretty(&obj)?);
+                    }
                     eprintln!("Added node [{}]", id);
                 }
                 _ => {
