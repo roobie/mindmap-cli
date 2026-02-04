@@ -2,10 +2,15 @@ use anyhow::Result;
 use pretty_console::Console;
 
 pub trait Printer {
-    fn show(&self, node: &crate::Node, inbound: &[u32], outbound: &[u32]) -> Result<()>;
+    fn show(
+        &self,
+        node: &crate::Node,
+        inbound: &[u32],
+        outbound: &[crate::Reference],
+    ) -> Result<()>;
     fn list(&self, lines: &[String]) -> Result<()>;
     fn refs(&self, lines: &[String]) -> Result<()>;
-    fn links(&self, id: u32, links: &[u32]) -> Result<()>;
+    fn links(&self, id: u32, links: &[crate::Reference]) -> Result<()>;
     fn search(&self, lines: &[String]) -> Result<()>;
     fn orphans(&self, orphans: &[String]) -> Result<()>;
 }
@@ -19,7 +24,12 @@ impl PrettyPrinter {
 }
 
 impl Printer for PrettyPrinter {
-    fn show(&self, node: &crate::Node, inbound: &[u32], outbound: &[u32]) -> Result<()> {
+    fn show(
+        &self,
+        node: &crate::Node,
+        inbound: &[u32],
+        outbound: &[crate::Reference],
+    ) -> Result<()> {
         // ID in green (no newline)
         Console::new(format!("[{}] ", node.id)).green().print();
         // Title bold (uncolored) on same line
@@ -35,9 +45,17 @@ impl Printer for PrettyPrinter {
         }
 
         // Outgoing references in magenta
-        if !outbound.is_empty() {
+        let mut outbound_ids = Vec::new();
+        for r in outbound {
+            if let crate::Reference::Internal(rid) = r {
+                outbound_ids.push(*rid);
+            }
+        }
+        if !outbound_ids.is_empty() {
             Console::new("Outgoing:").magenta().print();
-            Console::new(format!(" {:?}", outbound)).magenta().println();
+            Console::new(format!(" {:?}", outbound_ids))
+                .magenta()
+                .println();
         }
 
         Ok(())
@@ -57,9 +75,23 @@ impl Printer for PrettyPrinter {
         Ok(())
     }
 
-    fn links(&self, id: u32, links: &[u32]) -> Result<()> {
-        let s = format!("Node [{}] references: {:?}", id, links);
-        Console::new(&s).println();
+    fn links(&self, id: u32, links: &[crate::Reference]) -> Result<()> {
+        let mut internal = Vec::new();
+        let mut external = Vec::new();
+        for r in links {
+            match r {
+                crate::Reference::Internal(rid) => internal.push(*rid),
+                crate::Reference::External(eid, file) => {
+                    external.push(format!("[{}] in {}", eid, file))
+                }
+            }
+        }
+        if !internal.is_empty() {
+            Console::new(format!("Node [{}] references: {:?}", id, internal)).println();
+        }
+        if !external.is_empty() {
+            Console::new(format!("Node [{}] external refs: {:?}", id, external)).println();
+        }
         Ok(())
     }
 
@@ -93,14 +125,25 @@ impl PlainPrinter {
 }
 
 impl Printer for PlainPrinter {
-    fn show(&self, node: &crate::Node, inbound: &[u32], outbound: &[u32]) -> Result<()> {
+    fn show(
+        &self,
+        node: &crate::Node,
+        inbound: &[u32],
+        outbound: &[crate::Reference],
+    ) -> Result<()> {
         println!("[{}] {}", node.id, node.raw_title);
         println!("{}", node.description);
         if !inbound.is_empty() {
             println!("Incoming: {:?}", inbound);
         }
-        if !outbound.is_empty() {
-            println!("Outgoing: {:?}", outbound);
+        let mut outbound_ids = Vec::new();
+        for r in outbound {
+            if let crate::Reference::Internal(rid) = r {
+                outbound_ids.push(*rid);
+            }
+        }
+        if !outbound_ids.is_empty() {
+            println!("Outgoing: {:?}", outbound_ids);
         }
         Ok(())
     }
@@ -119,8 +162,23 @@ impl Printer for PlainPrinter {
         Ok(())
     }
 
-    fn links(&self, id: u32, links: &[u32]) -> Result<()> {
-        println!("Node [{}] references: {:?}", id, links);
+    fn links(&self, id: u32, links: &[crate::Reference]) -> Result<()> {
+        let mut internal = Vec::new();
+        let mut external = Vec::new();
+        for r in links {
+            match r {
+                crate::Reference::Internal(rid) => internal.push(*rid),
+                crate::Reference::External(eid, file) => {
+                    external.push(format!("[{}] in {}", eid, file))
+                }
+            }
+        }
+        if !internal.is_empty() {
+            println!("Node [{}] references: {:?}", id, internal);
+        }
+        if !external.is_empty() {
+            println!("Node [{}] external refs: {:?}", id, external);
+        }
         Ok(())
     }
 
@@ -155,13 +213,13 @@ mod tests {
             id: 1,
             raw_title: "AE: Test".to_string(),
             description: "desc".to_string(),
-            references: vec![2],
+            references: vec![crate::Reference::Internal(2)],
             line_index: 0,
         };
         p.show(&node, &vec![3], &node.references)?;
         p.list(&vec!["one".to_string(), "two".to_string()])?;
         p.refs(&vec!["ref".to_string()])?;
-        p.links(1, &vec![2])?;
+        p.links(1, &vec![crate::Reference::Internal(2)])?;
         p.search(&vec!["s".to_string()])?;
         p.orphans(&Vec::<String>::new())?;
         p.orphans(&vec!["4".to_string()])?;
@@ -175,13 +233,13 @@ mod tests {
             id: 1,
             raw_title: "AE: Test".to_string(),
             description: "desc".to_string(),
-            references: vec![2],
+            references: vec![crate::Reference::Internal(2)],
             line_index: 0,
         };
         p.show(&node, &vec![3], &node.references)?;
         p.list(&vec!["one".to_string(), "two".to_string()])?;
         p.refs(&vec!["ref".to_string()])?;
-        p.links(1, &vec![2])?;
+        p.links(1, &vec![crate::Reference::Internal(2)])?;
         p.search(&vec!["s".to_string()])?;
         p.orphans(&Vec::<String>::new())?;
         p.orphans(&vec!["4".to_string()])?;

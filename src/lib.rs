@@ -138,11 +138,16 @@ pub struct Node {
     pub id: u32,
     pub raw_title: String,
     pub description: String,
-    pub references: Vec<u32>,
+    pub references: Vec<Reference>,
     pub line_index: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub enum Reference {
+    Internal(u32),
+    External(u32, String),
+}
+
 pub struct Mindmap {
     pub path: PathBuf,
     pub lines: Vec<String>,
@@ -286,9 +291,9 @@ pub fn parse_node_line(line: &str, line_index: usize) -> Result<Node> {
     })
 }
 
-// Extract references of the form [123] from a description string.
+// Extract references of the form [123] or [234](./file.md) from a description string.
 // If skip_self is Some(id) then occurrences equal to that id are ignored.
-fn extract_refs_from_str(s: &str, skip_self: Option<u32>) -> Vec<u32> {
+fn extract_refs_from_str(s: &str, skip_self: Option<u32>) -> Vec<Reference> {
     let mut refs = Vec::new();
     let mut i = 0usize;
     while i < s.len() {
@@ -303,7 +308,21 @@ fn extract_refs_from_str(s: &str, skip_self: Option<u32>) -> Vec<u32> {
                     && let Ok(rid) = idslice.parse::<u32>()
                     && Some(rid) != skip_self
                 {
-                    refs.push(rid);
+                    // check if followed by (path)
+                    let after = &s[end..];
+                    if after.starts_with("](") {
+                        // find closing )
+                        if let Some(paren_end) = after.find(')') {
+                            let path_start = end + 2; // after ]( 
+                            let path_end = end + paren_end;
+                            let path = &s[path_start..path_end];
+                            refs.push(Reference::External(rid, path.to_string()));
+                            i = path_end + 1;
+                            continue;
+                        }
+                    }
+                    // internal ref
+                    refs.push(Reference::Internal(rid));
                 }
                 i = end + 1;
                 continue;
@@ -329,7 +348,10 @@ pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
         // inbound refs
         let mut inbound = Vec::new();
         for n in &mm.nodes {
-            if n.references.contains(&id) {
+            if n.references
+                .iter()
+                .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
+            {
                 inbound.push(n.id);
             }
         }
@@ -369,7 +391,10 @@ pub fn cmd_list(mm: &Mindmap, type_filter: Option<&str>, grep: Option<&str>) -> 
 pub fn cmd_refs(mm: &Mindmap, id: u32) -> Vec<String> {
     let mut out = Vec::new();
     for n in &mm.nodes {
-        if n.references.contains(&id) {
+        if n.references
+            .iter()
+            .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
+        {
             out.push(format!(
                 "[{}] **{}** - {}",
                 n.id, n.raw_title, n.description
@@ -379,7 +404,7 @@ pub fn cmd_refs(mm: &Mindmap, id: u32) -> Vec<String> {
     out
 }
 
-pub fn cmd_links(mm: &Mindmap, id: u32) -> Option<Vec<u32>> {
+pub fn cmd_links(mm: &Mindmap, id: u32) -> Option<Vec<Reference>> {
     mm.get_node(id).map(|n| n.references.clone())
 }
 
@@ -475,12 +500,14 @@ pub fn cmd_add_editor(mm: &mut Mindmap, editor: &str, strict: bool) -> Result<u3
     }
 
     if strict {
-        for rid in &parsed.references {
-            if !mm.by_id.contains_key(rid) {
-                return Err(anyhow::anyhow!(format!(
-                    "ADD strict: reference to missing node {}",
-                    rid
-                )));
+        for r in &parsed.references {
+            if let Reference::Internal(iid) = r {
+                if !mm.by_id.contains_key(iid) {
+                    return Err(anyhow::anyhow!(format!(
+                        "ADD strict: reference to missing node {}",
+                        iid
+                    )));
+                }
             }
         }
     }
@@ -614,12 +641,14 @@ pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()
 
     // strict check for references
     if strict {
-        for rid in &parsed.references {
-            if !mm.by_id.contains_key(rid) {
-                return Err(anyhow::anyhow!(format!(
-                    "PUT strict: reference to missing node {}",
-                    rid
-                )));
+        for r in &parsed.references {
+            if let Reference::Internal(iid) = r {
+                if !mm.by_id.contains_key(iid) {
+                    return Err(anyhow::anyhow!(format!(
+                        "PUT strict: reference to missing node {}",
+                        iid
+                    )));
+                }
             }
         }
     }
@@ -676,12 +705,14 @@ pub fn cmd_patch(
     }
 
     if strict {
-        for rid in &parsed.references {
-            if !mm.by_id.contains_key(rid) {
-                return Err(anyhow::anyhow!(format!(
-                    "PATCH strict: reference to missing node {}",
-                    rid
-                )));
+        for r in &parsed.references {
+            if let Reference::Internal(iid) = r {
+                if !mm.by_id.contains_key(iid) {
+                    return Err(anyhow::anyhow!(format!(
+                        "PATCH strict: reference to missing node {}",
+                        iid
+                    )));
+                }
             }
         }
     }
@@ -706,7 +737,10 @@ pub fn cmd_delete(mm: &mut Mindmap, id: u32, force: bool) -> Result<()> {
     // check incoming references
     let mut incoming_from = Vec::new();
     for n in &mm.nodes {
-        if n.references.contains(&id) {
+        if n.references
+            .iter()
+            .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
+        {
             incoming_from.push(n.id);
         }
     }
@@ -769,12 +803,24 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
 
     // 3) Missing references
     for n in &mm.nodes {
-        for rid in &n.references {
-            if !mm.by_id.contains_key(rid) {
-                warnings.push(format!(
-                    "Missing ref: node {} references missing node {}",
-                    n.id, rid
-                ));
+        for r in &n.references {
+            match r {
+                Reference::Internal(iid) => {
+                    if !mm.by_id.contains_key(iid) {
+                        warnings.push(format!(
+                            "Missing ref: node {} references missing node {}",
+                            n.id, iid
+                        ));
+                    }
+                }
+                Reference::External(eid, file) => {
+                    if !std::path::Path::new(file).exists() {
+                        warnings.push(format!(
+                            "Missing file: node {} references {} in missing file {}",
+                            n.id, eid, file
+                        ));
+                    }
+                }
             }
         }
     }
@@ -795,9 +841,11 @@ pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
         incoming.entry(n.id).or_insert(0);
     }
     for n in &mm.nodes {
-        for rid in &n.references {
-            if incoming.contains_key(rid) {
-                *incoming.entry(*rid).or_insert(0) += 1;
+        for r in &n.references {
+            if let Reference::Internal(iid) = r {
+                if incoming.contains_key(iid) {
+                    *incoming.entry(*iid).or_insert(0) += 1;
+                }
             }
         }
     }
@@ -828,15 +876,21 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
 
     // Outgoing: references from self
     if let Some(node) = mm.get_node(id) {
-        for &rid in &node.references {
-            nodes.insert(rid);
+        for r in &node.references {
+            if let Reference::Internal(rid) = r {
+                nodes.insert(*rid);
+            }
         }
     }
 
     // Incoming: nodes that reference self
     for n in &mm.nodes {
-        if n.references.contains(&id) {
-            nodes.insert(n.id);
+        for r in &n.references {
+            if let Reference::Internal(rid) = r {
+                if *rid == id {
+                    nodes.insert(n.id);
+                }
+            }
         }
     }
 
@@ -856,9 +910,11 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
     // Add edges: from each node to its references, if both in neighborhood
     for &nid in &nodes {
         if let Some(node) = mm.get_node(nid) {
-            for &rid in &node.references {
-                if nodes.contains(&rid) {
-                    dot.push_str(&format!("  {} -> {};\n", nid, rid));
+            for r in &node.references {
+                if let Reference::Internal(rid) = r {
+                    if nodes.contains(rid) {
+                        dot.push_str(&format!("  {} -> {};\n", nid, rid));
+                    }
                 }
             }
         }
@@ -867,6 +923,8 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
     dot.push_str("}\n");
     Ok(dot)
 }
+
+// mod ui;
 
 pub fn run(cli: Cli) -> Result<()> {
     let path = cli.file.unwrap_or_else(|| PathBuf::from("MINDMAP.md"));
@@ -924,7 +982,10 @@ pub fn run(cli: Cli) -> Result<()> {
                     // compute inbound refs
                     let mut inbound = Vec::new();
                     for n in &mm.nodes {
-                        if n.references.contains(&id) {
+                        if n.references
+                            .iter()
+                            .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
+                        {
                             inbound.push(n.id);
                         }
                     }
@@ -1193,7 +1254,7 @@ mod tests {
         assert!(mm.by_id.contains_key(&1));
         assert!(mm.by_id.contains_key(&2));
         let n1 = mm.get_node(1).unwrap();
-        assert_eq!(n1.references, vec![2]);
+        assert_eq!(n1.references, vec![Reference::Internal(2)]);
         temp.close()?;
         Ok(())
     }
@@ -1265,7 +1326,10 @@ mod tests {
         let new_line = "[2] **DR: Replaced** - replaced desc [1]";
         cmd_put(&mut mm, 2, new_line, false)?;
         assert_eq!(mm.get_node(2).unwrap().raw_title, "DR: Replaced");
-        assert_eq!(mm.get_node(2).unwrap().references, vec![1]);
+        assert_eq!(
+            mm.get_node(2).unwrap().references,
+            vec![Reference::Internal(1)]
+        );
 
         temp.close()?;
         Ok(())
@@ -1304,7 +1368,7 @@ mod tests {
         file.write_str("[1] **AE: One** - first\n[2] **AE: Two** - refers [1]\n")?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
         let links = cmd_links(&mm, 2);
-        assert_eq!(links, Some(vec![1]));
+        assert_eq!(links, Some(vec![Reference::Internal(1)]));
         temp.close()?;
         Ok(())
     }
@@ -1475,7 +1539,9 @@ mod tests {
     fn test_cmd_graph() -> Result<()> {
         let temp = assert_fs::TempDir::new()?;
         let file = temp.child("MINDMAP.md");
-        file.write_str("[1] **AE: One** - first\n[2] **AE: Two** - refers [1]\n[3] **AE: Three** - also [1]\n")?;
+        file.write_str(
+            "[1] **AE: One** - first\n[2] **AE: Two** - refers [1]\n[3] **AE: Three** - also [1]\n",
+        )?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
         let dot = cmd_graph(&mm, 1)?;
         assert!(dot.contains("digraph {"));
@@ -1505,15 +1571,25 @@ mod tests {
 
     #[test]
     fn test_extract_refs_from_str() {
-        assert_eq!(extract_refs_from_str("no refs", None), vec![] as Vec<u32>);
-        assert_eq!(extract_refs_from_str("[1] and [2]", None), vec![1, 2]);
+        assert_eq!(
+            extract_refs_from_str("no refs", None),
+            vec![] as Vec<Reference>
+        );
+        assert_eq!(
+            extract_refs_from_str("[1] and [2]", None),
+            vec![Reference::Internal(1), Reference::Internal(2)]
+        );
         assert_eq!(
             extract_refs_from_str("[1] and [1]", Some(1)),
-            vec![] as Vec<u32>
+            vec![] as Vec<Reference>
         ); // skip self
         assert_eq!(
             extract_refs_from_str("[abc] invalid [123]", None),
-            vec![123]
+            vec![Reference::Internal(123)]
+        );
+        assert_eq!(
+            extract_refs_from_str("[234](./file.md)", None),
+            vec![Reference::External(234, "./file.md".to_string())]
         );
     }
 }
