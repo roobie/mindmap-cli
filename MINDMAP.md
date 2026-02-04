@@ -55,4 +55,4 @@
 [28] **DR: Delete semantics** - Delete blocks by default when referenced; use --force to delete and leave dangling refs (lint will report). No automatic cleanup by default.
 [29] **TODO: Read stdin** - The application should allow for switching to stdin mode by supplying the `-` arg, for applicable subcommands
 [30] **TODO: Add from $EDITOR** - If `add` is called without args, it should start EDITOR and add from that tmp file
-[31] **WF: Protocol for interacting with MINDMAP** - See PROTOCOL_MINDMAP.md for the formal protocol describing how to interact with MINDMAP.md (add/edit/lint/orphans flows).
+[31] **WF: Protocol for interacting with MINDMAP** - See [PROTOCOL_MINDMAP.md](./PROTOCOL_MINDMAP.md) for the formal protocol describing how to interact with MINDMAP.md (add/edit/lint/orphans flows).
