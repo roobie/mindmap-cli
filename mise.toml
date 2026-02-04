@@ -22,7 +22,7 @@ run = "cargo clippy --all --fix"
 [tasks.build]
 description = "Build the project"
 depends = ["lint"]
-run = "cargo build --out Html"
+run = "cargo build"
 
 [tasks.test]
 description = "Run cli tests"
@@ -31,7 +31,7 @@ run = "cargo test"
 [tasks.testcov]
 description = "Run cli tests"
 depends = ["build"]
-run = "cargo tarpaulin"
+run = "cargo tarpaulin --out Html --out Xml"
 
 [tasks.install]
 description = "Install binary"

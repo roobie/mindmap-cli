@@ -2,7 +2,7 @@ use anyhow::Result;
 use pretty_console::Console;
 
 pub trait Printer {
-    fn show(&self, node: &mindmap_cli::Node, inbound: &[u32], outbound: &[u32]) -> Result<()>;
+    fn show(&self, node: &crate::Node, inbound: &[u32], outbound: &[u32]) -> Result<()>;
     fn list(&self, lines: &[String]) -> Result<()>;
     fn refs(&self, lines: &[String]) -> Result<()>;
     fn links(&self, id: u32, links: &[u32]) -> Result<()>;
@@ -19,7 +19,7 @@ impl PrettyPrinter {
 }
 
 impl Printer for PrettyPrinter {
-    fn show(&self, node: &mindmap_cli::Node, inbound: &[u32], outbound: &[u32]) -> Result<()> {
+    fn show(&self, node: &crate::Node, inbound: &[u32], outbound: &[u32]) -> Result<()> {
         // ID in green (no newline)
         Console::new(format!("[{}] ", node.id)).green().print();
         // Title bold (uncolored) on same line
@@ -93,7 +93,7 @@ impl PlainPrinter {
 }
 
 impl Printer for PlainPrinter {
-    fn show(&self, node: &mindmap_cli::Node, inbound: &[u32], outbound: &[u32]) -> Result<()> {
+    fn show(&self, node: &crate::Node, inbound: &[u32], outbound: &[u32]) -> Result<()> {
         println!("[{}] {}", node.id, node.raw_title);
         println!("{}", node.description);
         if !inbound.is_empty() {
@@ -140,6 +140,51 @@ impl Printer for PlainPrinter {
                 println!("{}", o);
             }
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pretty_printer_smoke() -> Result<()> {
+        let p = PrettyPrinter::new()?;
+        let node = crate::Node {
+            id: 1,
+            raw_title: "AE: Test".to_string(),
+            description: "desc".to_string(),
+            references: vec![2],
+            line_index: 0,
+        };
+        p.show(&node, &vec![3], &node.references)?;
+        p.list(&vec!["one".to_string(), "two".to_string()])?;
+        p.refs(&vec!["ref".to_string()])?;
+        p.links(1, &vec![2])?;
+        p.search(&vec!["s".to_string()])?;
+        p.orphans(&Vec::<String>::new())?;
+        p.orphans(&vec!["4".to_string()])?;
+        Ok(())
+    }
+
+    #[test]
+    fn plain_printer_smoke() -> Result<()> {
+        let p = PlainPrinter::new()?;
+        let node = crate::Node {
+            id: 1,
+            raw_title: "AE: Test".to_string(),
+            description: "desc".to_string(),
+            references: vec![2],
+            line_index: 0,
+        };
+        p.show(&node, &vec![3], &node.references)?;
+        p.list(&vec!["one".to_string(), "two".to_string()])?;
+        p.refs(&vec!["ref".to_string()])?;
+        p.links(1, &vec![2])?;
+        p.search(&vec!["s".to_string()])?;
+        p.orphans(&Vec::<String>::new())?;
+        p.orphans(&vec!["4".to_string()])?;
         Ok(())
     }
 }
