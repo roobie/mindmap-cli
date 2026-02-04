@@ -123,8 +123,12 @@ pub enum Commands {
         force: bool,
     },
 
-    /// Lint the mindmap for basic issues
-    Lint,
+    /// Lint the mindmap for basic issues (use --fix to auto-fix spacing and type prefixes)
+    Lint {
+        /// Auto-fix spacing and duplicated type prefixes
+        #[arg(long)]
+        fix: bool,
+    },
 
     /// Show orphan nodes (no in & no out, excluding META)
     Orphans,
@@ -275,8 +279,102 @@ impl Mindmap {
 
         Ok(())
     }
-}
 
+    /// Apply automatic fixes: normalize spacing (ensuring exactly one blank between nodes)
+    /// and remove duplicated leading type prefixes in node titles (e.g., "AE: AE: Foo" -> "AE: Foo").
+    pub fn apply_fixes(&mut self) -> Result<FixReport> {
+        let mut report = FixReport::default();
+
+        // 1) normalize spacing (ensure exactly one blank line between nodes, collapse multiples)
+        if self.lines.is_empty() {
+            return Ok(report);
+        }
+
+        let orig = self.lines.clone();
+        let mut new_lines: Vec<String> = Vec::new();
+        let mut i = 0usize;
+        while i < orig.len() {
+            let line = orig[i].clone();
+            new_lines.push(line.clone());
+
+            // If this line is a node, look ahead to find next node
+            if parse_node_line(&line, i).is_ok() {
+                let mut j = i + 1;
+                // Count blank lines following this node
+                while j < orig.len() && orig[j].trim().is_empty() {
+                    j += 1;
+                }
+
+                // If there's a next node at j, ensure exactly one blank line between
+                if j < orig.len() && parse_node_line(&orig[j], j).is_ok() {
+                    if j == i + 1 {
+                        // adjacent nodes -> insert one blank
+                        new_lines.push(String::new());
+                        report.spacing.push(i + 1);
+                    } else if j > i + 2 {
+                        // multiple blanks -> collapse to one
+                        new_lines.push(String::new());
+                        report.spacing.push(i + 1);
+                    }
+                    i = j;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+
+        // If spacing changed, update lines and reparse
+        if !report.spacing.is_empty() {
+            let content = new_lines.join("\n") + "\n";
+            let normalized_mm = Mindmap::from_string(content, self.path.clone())?;
+            self.lines = normalized_mm.lines;
+            self.nodes = normalized_mm.nodes;
+            self.by_id = normalized_mm.by_id;
+        }
+
+        // 2) fix duplicated type prefixes in node titles (e.g., "AE: AE: X" -> "AE: X")
+        let mut changed = false;
+        let mut new_lines = self.lines.clone();
+        for node in &self.nodes {
+            if let Some(colon_pos) = node.raw_title.find(':') {
+                let leading_type = node.raw_title[..colon_pos].trim();
+                let after_colon = node.raw_title[colon_pos + 1..].trim_start();
+
+                // Check if after_colon also starts with the same type + ':'
+                if after_colon.starts_with(&format!("{}:", leading_type)) {
+                    // Remove the duplicated type prefix
+                    let after_dup = after_colon[leading_type.len() + 1..].trim_start();
+                    let new_raw = if after_dup.is_empty() {
+                        leading_type.to_string()
+                    } else {
+                        format!("{}: {}", leading_type, after_dup)
+                    };
+
+                    report.title_fixes.push(TitleFix {
+                        id: node.id,
+                        old: node.raw_title.clone(),
+                        new: new_raw.clone(),
+                    });
+
+                    // Update the corresponding line in new_lines
+                    new_lines[node.line_index] =
+                        format!("[{}] **{}** - {}", node.id, new_raw, node.description);
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            let content = new_lines.join("\n") + "\n";
+            let normalized_mm = Mindmap::from_string(content, self.path.clone())?;
+            self.lines = normalized_mm.lines;
+            self.nodes = normalized_mm.nodes;
+            self.by_id = normalized_mm.by_id;
+        }
+
+        Ok(report)
+    }
+}
 
 // Helper: lightweight manual parser for the strict node format
 // Format: ^\[(\d+)\] \*\*(.+?)\*\* - (.*)$
@@ -551,12 +649,13 @@ pub fn cmd_add_editor(mm: &mut Mindmap, editor: &str, strict: bool) -> Result<u3
     if strict {
         for r in &parsed.references {
             if let Reference::Internal(iid) = r
-                && !mm.by_id.contains_key(iid) {
-                    return Err(anyhow::anyhow!(format!(
-                        "ADD strict: reference to missing node {}",
-                        iid
-                    )));
-                }
+                && !mm.by_id.contains_key(iid)
+            {
+                return Err(anyhow::anyhow!(format!(
+                    "ADD strict: reference to missing node {}",
+                    iid
+                )));
+            }
         }
     }
 
@@ -691,12 +790,13 @@ pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()
     if strict {
         for r in &parsed.references {
             if let Reference::Internal(iid) = r
-                && !mm.by_id.contains_key(iid) {
-                    return Err(anyhow::anyhow!(format!(
-                        "PUT strict: reference to missing node {}",
-                        iid
-                    )));
-                }
+                && !mm.by_id.contains_key(iid)
+            {
+                return Err(anyhow::anyhow!(format!(
+                    "PUT strict: reference to missing node {}",
+                    iid
+                )));
+            }
         }
     }
 
@@ -754,12 +854,13 @@ pub fn cmd_patch(
     if strict {
         for r in &parsed.references {
             if let Reference::Internal(iid) = r
-                && !mm.by_id.contains_key(iid) {
-                    return Err(anyhow::anyhow!(format!(
-                        "PATCH strict: reference to missing node {}",
-                        iid
-                    )));
-                }
+                && !mm.by_id.contains_key(iid)
+            {
+                return Err(anyhow::anyhow!(format!(
+                    "PATCH strict: reference to missing node {}",
+                    iid
+                )));
+            }
         }
     }
 
@@ -889,9 +990,10 @@ pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
     for n in &mm.nodes {
         for r in &n.references {
             if let Reference::Internal(iid) = r
-                && incoming.contains_key(iid) {
-                    *incoming.entry(*iid).or_insert(0) += 1;
-                }
+                && incoming.contains_key(iid)
+            {
+                *incoming.entry(*iid).or_insert(0) += 1;
+            }
         }
     }
     for n in &mm.nodes {
@@ -932,9 +1034,10 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
     for n in &mm.nodes {
         for r in &n.references {
             if let Reference::Internal(rid) = r
-                && *rid == id {
-                    nodes.insert(n.id);
-                }
+                && *rid == id
+            {
+                nodes.insert(n.id);
+            }
         }
     }
 
@@ -956,9 +1059,10 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
         if let Some(node) = mm.get_node(nid) {
             for r in &node.references {
                 if let Reference::Internal(rid) = r
-                    && nodes.contains(rid) {
-                        dot.push_str(&format!("  {} -> {};\n", nid, rid));
-                    }
+                    && nodes.contains(rid)
+                {
+                    dot.push_str(&format!("  {} -> {};\n", nid, rid));
+                }
             }
         }
     }
@@ -1246,14 +1350,53 @@ pub fn run(cli: Cli) -> Result<()> {
             }
             eprintln!("Deleted node [{}]", id);
         }
-        Commands::Lint => {
-            let res = cmd_lint(&mm)?;
-            if matches!(cli.output, OutputFormat::Json) {
-                let obj = serde_json::json!({"command": "lint", "warnings": res});
-                println!("{}", serde_json::to_string_pretty(&obj)?);
+        Commands::Lint { fix } => {
+            if fix {
+                if mm.path.as_os_str() == "-" {
+                    return Err(cannot_write_err("lint --fix"));
+                }
+
+                // apply fixes
+                let report = mm.apply_fixes()?;
+                if report.any_changes() {
+                    mm.save()?;
+                }
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let obj = serde_json::json!({"command": "lint", "fixed": report.any_changes(), "fixes": report});
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    if !report.spacing.is_empty() {
+                        eprintln!(
+                            "Fixed spacing: inserted {} blank lines",
+                            report.spacing.len()
+                        );
+                    }
+                    for tf in &report.title_fixes {
+                        eprintln!(
+                            "Fixed title for node {}: '{}' -> '{}'",
+                            tf.id, tf.old, tf.new
+                        );
+                    }
+                    if !report.any_changes() {
+                        eprintln!("No fixes necessary");
+                    }
+
+                    // run lint after fixes and print any remaining warnings
+                    let res = cmd_lint(&mm)?;
+                    for r in res {
+                        eprintln!("{}", r);
+                    }
+                }
             } else {
-                for r in res {
-                    eprintln!("{}", r);
+                let res = cmd_lint(&mm)?;
+                if matches!(cli.output, OutputFormat::Json) {
+                    let obj = serde_json::json!({"command": "lint", "warnings": res});
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    for r in res {
+                        eprintln!("{}", r);
+                    }
                 }
             }
         }
@@ -1312,7 +1455,8 @@ pub fn run(cli: Cli) -> Result<()> {
                     .into_iter()
                     .map(|line| serde_json::json!({"line": line}))
                     .collect();
-                let mut obj = serde_json::json!({"command": "bootstrap", "help": help_str, "items": arr});
+                let mut obj =
+                    serde_json::json!({"command": "bootstrap", "help": help_str, "items": arr});
                 if let Some(proto) = protocol {
                     obj["protocol"] = serde_json::json!(proto);
                 }
@@ -1341,6 +1485,25 @@ pub fn run(cli: Cli) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone, serde::Serialize, Default)]
+pub struct FixReport {
+    pub spacing: Vec<usize>,
+    pub title_fixes: Vec<TitleFix>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TitleFix {
+    pub id: u32,
+    pub old: String,
+    pub new: String,
+}
+
+impl FixReport {
+    pub fn any_changes(&self) -> bool {
+        !self.spacing.is_empty() || !self.title_fixes.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -1743,7 +1906,102 @@ mod tests {
 
         let content = std::fs::read_to_string(file.path())?;
         // Should remain unchanged apart from ensuring trailing newline
-        assert_eq!(content, "[1] **AE: A** - a\nHeader line\n[2] **AE: B** - b\n");
+        assert_eq!(
+            content,
+            "[1] **AE: A** - a\nHeader line\n[2] **AE: B** - b\n"
+        );
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_lint_fix_spacing() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: A** - a\n[2] **AE: B** - b\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        let report = mm.apply_fixes()?;
+        assert!(!report.spacing.is_empty());
+        assert_eq!(report.title_fixes.len(), 0);
+        mm.save()?;
+
+        let content = std::fs::read_to_string(file.path())?;
+        assert_eq!(content, "[1] **AE: A** - a\n\n[2] **AE: B** - b\n");
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_lint_fix_duplicated_type() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: AE: Auth** - desc\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        let report = mm.apply_fixes()?;
+        assert_eq!(report.title_fixes.len(), 1);
+        assert_eq!(report.title_fixes[0].new, "AE: Auth");
+        mm.save()?;
+
+        let content = std::fs::read_to_string(file.path())?;
+        assert!(content.contains("[1] **AE: Auth** - desc"));
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_lint_fix_combined() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **WF: WF: Workflow** - first\n[2] **AE: Auth** - second\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        let report = mm.apply_fixes()?;
+        assert!(!report.spacing.is_empty());
+        assert_eq!(report.title_fixes.len(), 1);
+        assert_eq!(report.title_fixes[0].id, 1);
+        assert_eq!(report.title_fixes[0].new, "WF: Workflow");
+        mm.save()?;
+
+        let content = std::fs::read_to_string(file.path())?;
+        assert!(content.contains("[1] **WF: Workflow** - first"));
+        assert!(content.contains("\n\n[2] **AE: Auth** - second"));
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_lint_fix_idempotent() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: AE: A** - a\n[2] **AE: B** - b\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        let report1 = mm.apply_fixes()?;
+        assert!(report1.any_changes());
+
+        // Apply again; should have no changes
+        let report2 = mm.apply_fixes()?;
+        assert!(!report2.any_changes());
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_lint_fix_collapse_multiple_blanks() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: A** - a\n\n\n[2] **AE: B** - b\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        let report = mm.apply_fixes()?;
+        assert!(!report.spacing.is_empty());
+        mm.save()?;
+
+        let content = std::fs::read_to_string(file.path())?;
+        // Should have exactly one blank line between nodes
+        assert_eq!(content, "[1] **AE: A** - a\n\n[2] **AE: B** - b\n");
         temp.close()?;
         Ok(())
     }
