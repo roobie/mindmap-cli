@@ -58,3 +58,4 @@
 [31] **WF: Protocol for interacting with MINDMAP** - See [PROTOCOL_MINDMAP.md](./PROTOCOL_MINDMAP.md) for the formal protocol describing how to interact with MINDMAP.md (add/edit/lint/orphans flows).
 [32] **AE: Manual parser for node lines** - Replaced regex captures with manual parser to avoid repeated compilation and allocations; tests updated (refactor 2026-02-04)
 [33] **AE: Parser consolidation** - Removed NODE_RE; cmd_edit uses manual parser as well to avoid any regex usage in hot paths (refactor 2026-02-04)
+[34] **AE: CLI refactor to lib.rs and unit tests** - Moved Cli/Commands structs and command logic to lib.rs via run() function; simplified main.rs; added 18+ unit tests for cmd_* functions and error cases; test coverage improved to 50% (from ~31%) using tarpaulin
