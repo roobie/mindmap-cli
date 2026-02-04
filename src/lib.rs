@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use std::{collections::HashMap, fs, io::Read, path::PathBuf};
 use clap::{Parser, Subcommand};
+use std::{collections::HashMap, fs, io::Read, path::PathBuf};
 
 mod ui;
 
@@ -1412,11 +1412,15 @@ mod tests {
         Ok(())
     }
 
+    #[test]
     fn test_save_stdin_path() -> Result<()> {
         let temp = assert_fs::TempDir::new()?;
         let file = temp.child("MINDMAP.md");
         file.write_str("[1] **AE: One** - first\n")?;
-        let mm = Mindmap::load_from_reader(std::io::Cursor::new("[1] **AE: One** - first\n"), PathBuf::from("-"))?;
+        let mm = Mindmap::load_from_reader(
+            std::io::Cursor::new("[1] **AE: One** - first\n"),
+            PathBuf::from("-"),
+        )?;
         let err = mm.save().unwrap_err();
         assert!(format!("{}", err).contains("Cannot save"));
         temp.close()?;
@@ -1427,7 +1431,13 @@ mod tests {
     fn test_extract_refs_from_str() {
         assert_eq!(extract_refs_from_str("no refs", None), vec![] as Vec<u32>);
         assert_eq!(extract_refs_from_str("[1] and [2]", None), vec![1, 2]);
-        assert_eq!(extract_refs_from_str("[1] and [1]", Some(1)), vec![] as Vec<u32>); // skip self
-        assert_eq!(extract_refs_from_str("[abc] invalid [123]", None), vec![123]);
+        assert_eq!(
+            extract_refs_from_str("[1] and [1]", Some(1)),
+            vec![] as Vec<u32>
+        ); // skip self
+        assert_eq!(
+            extract_refs_from_str("[abc] invalid [123]", None),
+            vec![123]
+        );
     }
 }
