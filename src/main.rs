@@ -159,7 +159,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     // helper to reject mutating commands when mm.path == '-'
-    let mut cannot_write_err = |cmd_name: &str| -> anyhow::Error {
+    let cannot_write_err = |cmd_name: &str| -> anyhow::Error {
         anyhow::anyhow!(format!(
             "Cannot {}: mindmap was loaded from stdin ('-'); use --file <path> to save changes",
             cmd_name
@@ -274,12 +274,11 @@ fn main() -> anyhow::Result<()> {
                 (Some(tp), Some(tt), Some(dd)) => {
                     let id = mindmap_cli::cmd_add(&mut mm, tp, tt, dd)?;
                     mm.save()?;
-                    if matches!(cli.output, OutputFormat::Json) {
-                        if let Some(node) = mm.get_node(id) {
+                    if matches!(cli.output, OutputFormat::Json)
+                        && let Some(node) = mm.get_node(id) {
                             let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
                             println!("{}", serde_json::to_string_pretty(&obj)?);
                         }
-                    }
                     eprintln!("Added node [{}]", id);
                 }
                 (None, None, None) => {
@@ -292,12 +291,11 @@ fn main() -> anyhow::Result<()> {
                     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
                     let id = mindmap_cli::cmd_add_editor(&mut mm, &editor, strict)?;
                     mm.save()?;
-                    if matches!(cli.output, OutputFormat::Json) {
-                        if let Some(node) = mm.get_node(id) {
+                    if matches!(cli.output, OutputFormat::Json)
+                        && let Some(node) = mm.get_node(id) {
                             let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
                             println!("{}", serde_json::to_string_pretty(&obj)?);
                         }
-                    }
                     eprintln!("Added node [{}]", id);
                 }
                 _ => {
