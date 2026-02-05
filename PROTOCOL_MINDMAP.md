@@ -44,7 +44,7 @@ mindmap-cli delete 13
 
 mindmap-cli add --type 'AE' --title 'Entry Points' --desc '...'
 
-mindmap-cli put 15 --type 'DR' --title 'Why safety over speed' --desc '...'
+mindmap-cli put 15 --line "[15] **DR: Why safety over speed** - explanation here"
 ```
     This ephemeral script can subsequently be executed by the agent or the user.
 

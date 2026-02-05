@@ -34,9 +34,9 @@
 
 [10] **Project purpose** - Provide a robust and useful CLI interface for interacting with MINDMAP files (just like this one.) - See design document at [DESIGN](./DESIGN.md). Make sure to keep both this MINDMAP and the DESIGN document updated as implementation goes along.
 
-[15] **AE: mindmap-cli** - v0 implementation: added CHECKLIST.md; implemented Rust skeleton (parser + CLI); commands: show,list,search,refs,links,add,deprecate,verify,lint,edit,put,patch,delete; added atomic save, edit command, put/patch, delete, --output json (updated 2026-02-03)
+[15] **AE: mindmap-cli** - v0 implementation complete: Rust parser + CLI with 18 commands (show,list,search,refs,links,add,deprecate,verify,lint,edit,put,patch,delete,graph,orphans,batch,prime); atomic save, edit via $EDITOR, put/patch/delete with validation, --output json, batch mode with blake3 concurrency guard, stdin support for read-only ops, prime command to bootstrap AI agents (updated 2026-02-05)
 
-[16] **TODO: v0 phases** - Follow CHECKLIST.md: Phase1 parser, Phase2 commands, Phase3 navigation, Phase4 edit, Phase5 lint, tests (integration tests added 2026-02-03); CI workflow added (updated 2026-02-03)
+[16] **DONE: v0 phases** - All phases complete: Phase1 parser (manual, no regex), Phase2 commands (18 subcommands), Phase3 navigation (refs/links/graph), Phase4 edit (via $EDITOR), Phase5 lint (with --fix), Phase6 batch (atomic, blake3 guard), Phase7 tests (38 unit + 4 integration), Phase8 docs updated (2026-02-05)
 
 [20] **DOC: CLI help** - Added high-level description and core usage examples to CLI help output (mindmap-cli --help / help) (updated 2026-02-03)
 
@@ -82,7 +82,7 @@
 
 [38] **WF: Git commit messages** - Require good but terse commit messages: short summary (<=72 chars) and optional body; reference ticket IDs; keep commits atomic.
 
-[39] **WF: Bootstrap command** - Runs 'mindmap-cli help' and 'mindmap-cli list' to bootstrap an AI agent's context; additionally concatenates PROTOCOL_MINDMAP.md (if present) to prime agents to follow the protocol.
+[39] **WF: Prime command** - Runs 'mindmap-cli prime' to output help and list nodes to prime an AI agent's context; additionally concatenates PROTOCOL_MINDMAP.md (if present) to prime agents to follow the protocol.
 
 [40] **WF: Lint auto-fix** - Use 'mindmap-cli lint --fix' to automatically fix common issues: ensures exactly one blank line between node lines (collapses multiple blanks), removes duplicated type prefixes in titles (e.g. AE: AE: Foo becomes AE: Foo).
 

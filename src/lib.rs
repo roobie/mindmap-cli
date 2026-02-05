@@ -141,8 +141,8 @@ pub enum Commands {
     /// Show graph neighborhood for a node (DOT format for Graphviz)
     Graph { id: u32 },
 
-    /// Bootstrap: print help and list to bootstrap an AI agent's context
-    Bootstrap,
+    /// Prime: print help and list to prime an AI agent's context
+    Prime,
 
     /// Batch mode: apply multiple non-interactive commands atomically
     Batch {
@@ -1745,8 +1745,8 @@ pub fn run(cli: Cli) -> Result<()> {
             let dot = cmd_graph(&mm, id)?;
             println!("{}", dot);
         }
-        Commands::Bootstrap => {
-            // Produce help text and then list nodes to bootstrap an agent's context.
+        Commands::Prime => {
+            // Produce help text and then list nodes to prime an agent's context.
             use clap::CommandFactory;
             use std::path::Path;
 
@@ -1784,7 +1784,7 @@ pub fn run(cli: Cli) -> Result<()> {
                     .map(|line| serde_json::json!({"line": line}))
                     .collect();
                 let mut obj =
-                    serde_json::json!({"command": "bootstrap", "help": help_str, "items": arr});
+                    serde_json::json!({"command": "prime", "help": help_str, "items": arr});
                 if let Some(proto) = protocol {
                     obj["protocol"] = serde_json::json!(proto);
                 }
