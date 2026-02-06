@@ -86,7 +86,7 @@ jobs:
           path: dist/*
 
   create_release:
-    needs: [test, build_binaries]
+    needs: [build, build_binaries]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/heads/release/')
 
