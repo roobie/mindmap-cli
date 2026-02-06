@@ -11,7 +11,6 @@ pub trait Printer {
     fn list(&self, lines: &[String]) -> Result<()>;
     fn refs(&self, lines: &[String]) -> Result<()>;
     fn links(&self, id: u32, links: &[crate::Reference]) -> Result<()>;
-    fn search(&self, lines: &[String]) -> Result<()>;
     fn orphans(&self, orphans: &[String]) -> Result<()>;
 }
 
@@ -91,13 +90,6 @@ impl Printer for PrettyPrinter {
         }
         if !external.is_empty() {
             Console::new(format!("Node [{}] external refs: {:?}", id, external)).println();
-        }
-        Ok(())
-    }
-
-    fn search(&self, lines: &[String]) -> Result<()> {
-        for line in lines {
-            Console::new(line).println();
         }
         Ok(())
     }
@@ -182,13 +174,6 @@ impl Printer for PlainPrinter {
         Ok(())
     }
 
-    fn search(&self, lines: &[String]) -> Result<()> {
-        for line in lines {
-            println!("{}", line);
-        }
-        Ok(())
-    }
-
     fn orphans(&self, orphans: &[String]) -> Result<()> {
         if orphans.is_empty() {
             println!("No orphans");
@@ -220,7 +205,6 @@ mod tests {
         p.list(&vec!["one".to_string(), "two".to_string()])?;
         p.refs(&vec!["ref".to_string()])?;
         p.links(1, &vec![crate::Reference::Internal(2)])?;
-        p.search(&vec!["s".to_string()])?;
         p.orphans(&Vec::<String>::new())?;
         p.orphans(&vec!["4".to_string()])?;
         Ok(())
@@ -240,7 +224,6 @@ mod tests {
         p.list(&vec!["one".to_string(), "two".to_string()])?;
         p.refs(&vec!["ref".to_string()])?;
         p.links(1, &vec![crate::Reference::Internal(2)])?;
-        p.search(&vec!["s".to_string()])?;
         p.orphans(&Vec::<String>::new())?;
         p.orphans(&vec!["4".to_string()])?;
         Ok(())

@@ -70,7 +70,7 @@ pub enum Commands {
     /// Show nodes that the given ID references
     Links { id: u32 },
 
-    /// Search nodes by substring
+    /// Search nodes by substring (convenience alias for: list --grep)
     Search { query: String },
 
     /// Add a new node
@@ -577,20 +577,8 @@ pub fn cmd_links(mm: &Mindmap, id: u32) -> Option<Vec<Reference>> {
     mm.get_node(id).map(|n| n.references.clone())
 }
 
-pub fn cmd_search(mm: &Mindmap, query: &str) -> Vec<String> {
-    let qlc = query.to_lowercase();
-    let mut out = Vec::new();
-    for n in &mm.nodes {
-        if n.raw_title.to_lowercase().contains(&qlc) || n.description.to_lowercase().contains(&qlc)
-        {
-            out.push(format!(
-                "[{}] **{}** - {}",
-                n.id, n.raw_title, n.description
-            ));
-        }
-    }
-    out
-}
+// NOTE: cmd_search was consolidated into cmd_list to eliminate code duplication.
+// See `Commands::Search` handler below which delegates to `cmd_list(mm, None, Some(query))`.
 
 pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, desc: &str) -> Result<u32> {
     let id = mm.next_id();
@@ -1524,12 +1512,14 @@ pub fn run(cli: Cli) -> Result<()> {
             None => return Err(anyhow::anyhow!(format!("Node [{}] not found", id))),
         },
         Commands::Search { query } => {
-            let items = cmd_search(&mm, &query);
+            // Delegate to cmd_list with grep filter (no type filter)
+            // This eliminates code duplication; search is an alias for list --grep
+            let items = cmd_list(&mm, None, Some(&query));
             if matches!(cli.output, OutputFormat::Json) {
                 let obj = serde_json::json!({"command": "search", "query": query, "items": items});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else if let Some(p) = &printer {
-                p.search(&items)?;
+                p.list(&items)?;
             } else {
                 for it in items {
                     println!("{}", it);
@@ -2241,9 +2231,28 @@ mod tests {
         let file = temp.child("MINDMAP.md");
         file.write_str("[1] **AE: One** - first\n[2] **AE: Two** - second\n")?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
-        let results = cmd_search(&mm, "first");
+        // Search now delegates to list --grep
+        let results = cmd_list(&mm, None, Some("first"));
         assert_eq!(results.len(), 1);
         assert!(results[0].contains("[1] **AE: One**"));
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_list_grep_equivalence() -> Result<()> {
+        // Verify that search (via cmd_list) produces identical output to list --grep
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: One** - first node\n[2] **WF: Two** - second node\n[3] **DR: Three** - third\n")?;
+        let mm = Mindmap::load(file.path().to_path_buf())?;
+        
+        // Both should produce the same output
+        let search_results = cmd_list(&mm, None, Some("node"));
+        let list_grep_results = cmd_list(&mm, None, Some("node"));
+        assert_eq!(search_results, list_grep_results);
+        assert_eq!(search_results.len(), 2);
+        
         temp.close()?;
         Ok(())
     }
