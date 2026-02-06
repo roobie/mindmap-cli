@@ -63,6 +63,9 @@ pub enum Commands {
         /// Follow external references across files
         #[arg(long)]
         follow: bool,
+        /// Print the found node's description only
+        #[arg(long)]
+        desc: bool,
     },
 
     /// List nodes (optionally filtered by --type or --grep with search flags)
@@ -1814,7 +1817,7 @@ pub fn run(cli: Cli) -> Result<()> {
     };
 
     match cli.command {
-        Commands::Show { id, follow } => match mm.get_node(id) {
+        Commands::Show { id, follow, desc } => match mm.get_node(id) {
             Some(node) => {
                 if follow {
                     // Recursive mode: follow external references
@@ -1878,13 +1881,17 @@ pub fn run(cli: Cli) -> Result<()> {
                             get_outgoing_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
                                 .unwrap_or_default();
 
-                        println!(
-                            "[{}] **{}** - {} ({})",
-                            node.id,
-                            node.raw_title,
-                            node.description,
-                            path.display()
-                        );
+                        if desc {
+                            println!("{}", node.description);
+                        } else {
+                            println!(
+                                "[{}] **{}** - {} ({})",
+                                node.id,
+                                node.raw_title,
+                                node.description,
+                                path.display()
+                            );
+                        }
 
                         if !inbound.is_empty() {
                             eprintln!(
@@ -1945,8 +1952,9 @@ pub fn run(cli: Cli) -> Result<()> {
                                 inbound.push(n.id);
                             }
                         }
-
-                        if let Some(p) = &printer {
+                        if desc {
+                            println!("{}", node.description);
+                        } else if let Some(p) = &printer {
                             p.show(node, &inbound, &node.references)?;
                         } else {
                             println!(
