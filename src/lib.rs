@@ -11,7 +11,7 @@ pub enum OutputFormat {
 }
 
 #[derive(Parser)]
-#[command(name = "mindmap")]
+#[command(name = "mindmap-cli")]
 #[command(about = "CLI tool for working with MINDMAP files")]
 #[command(
     long_about = r#"mindmap-cli — small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
