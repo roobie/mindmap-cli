@@ -111,6 +111,7 @@ Contains:
 
 ✅ **Security (Priority #1)**
 - Path canonicalization prevents `../../etc/passwd` escapes
+- Absolute paths (POSIX/Windows/UNC) rejected
 - Cycle detection prevents A→B→A loops
 - Depth limiting prevents infinite chains (max 50)
 - File size checks prevent memory exhaustion (max 10MB)
@@ -171,15 +172,14 @@ Getting started with Phase 3.1 (Core Data Structures):
 
 ### MindmapCache Implementation
 - [ ] Create MindmapCache struct
-  - [ ] `new(base_dir)` constructor
-  - [ ] `load(path)` with caching
-  - [ ] `resolve_path(relative)` with validation
-  - [ ] Internal `visited: HashSet<PathBuf>`
+  - [ ] `new(workspace_root)` constructor
+  - [ ] `load(base_file, relative, ctx)` with caching
+  - [ ] `resolve_path(base_file, relative)` with validation
 - [ ] Path validation
   - [ ] Canonicalize paths
-  - [ ] Check no escapes from base_dir
-  - [ ] Reject absolute paths
-  - [ ] Validate relative paths
+  - [ ] Check no escapes from workspace_root
+  - [ ] Reject absolute paths (POSIX/Windows/UNC)
+  - [ ] Resolve relative paths from current file
 - [ ] File loading
   - [ ] Load Mindmap from path
   - [ ] Cache loaded mindmaps
@@ -190,13 +190,13 @@ Getting started with Phase 3.1 (Core Data Structures):
 - [ ] Create NavigationContext struct
   - [ ] `depth: usize` counter
   - [ ] `max_depth: usize` limit (default 50)
-  - [ ] `visited: HashSet<PathBuf>` for cycles
+  - [ ] `visited: HashSet<PathBuf>` for cycles (per traversal)
 - [ ] Depth tracking
-  - [ ] `descend()` function (increment + check limit)
+  - [ ] `descend()` function (increment + check limit, guard-based)
   - [ ] Error on depth exceeded
 - [ ] Cycle detection
   - [ ] `mark_visited(path)` function
-  - [ ] `has_visited(path)` check
+  - [ ] `is_visited(path)` check
   - [ ] Detect cycles before loading
 
 ### Testing (Phase 3.1)
@@ -204,6 +204,7 @@ Getting started with Phase 3.1 (Core Data Structures):
   - [ ] test_cache_loads_file
   - [ ] test_cache_prevents_reload (caching works)
   - [ ] test_path_escapes_blocked (security)
+  - [ ] test_windows_absolute_paths_blocked
   - [ ] test_large_file_rejected (size limit)
   - [ ] test_path_canonicalization
 - [ ] Unit tests for NavigationContext

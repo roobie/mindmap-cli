@@ -431,6 +431,10 @@ pub fn load(
 
 ## CLI Interface Design
 
+**Path Resolution Rule:** All relative paths are resolved from the current file (the file being parsed), not a global root, across all commands (including `--follow`).
+
+Example (terse): if `docs/MINDMAP.md` contains `[10](./auth.md)` then resolution is `docs/auth.md`. Inverse (global root) would resolve to `./auth.md` at the workspace root.
+
 ### New Flags
 ```bash
 # Enable recursive navigation
@@ -573,8 +577,8 @@ graph {
   - Test: Create A → B → A scenario
 
 - **Path traversal attacks**
-  - Mitigation: Canonicalize, validate within base_dir
-  - Test: Attempt `../../etc/passwd` references
+  - Mitigation: Canonicalize, validate within workspace_root, reject absolute (POSIX, Windows drive/UNC)
+  - Test: Attempt `../../etc/passwd`, `C:\windows\system32`, `\\server\share` references
 
 ### Medium Risk
 - **Performance degradation with many files**

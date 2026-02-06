@@ -250,7 +250,7 @@ Phase 3.4: Polish & Optimization
 ### 1. Cache Scope: Per-Request vs. Global
 **Option A: Per-Request Cache** (CHOSEN)
 - Fresh cache created for each command
-- Reset visited set between commands
+- NavigationContext created per traversal (visited tracked per command)
 - Safe: No state pollution
 - Cost: Re-load files per command
 - Good for: CLI tool where commands are one-off
@@ -258,7 +258,7 @@ Phase 3.4: Polish & Optimization
 **Option B: Global Cache**
 - Shared across entire program run
 - Efficient: Load file once, reuse
-- Risk: Visited set must be reset per top-level command
+- Requires per-traversal NavigationContext to avoid cross-command cycles
 - Better for: REPL or server mode (not applicable here)
 
 **Decision:** Option A - simpler, safer for CLI context
@@ -305,6 +305,8 @@ Phase 3.4: Polish & Optimization
 - Each file knows its own directory
 - Supports: `./MINDMAP.llm.md` and `./auth/MINDMAP.auth.md`
 - More flexible
+
+Example: `docs/MINDMAP.md` referencing `[10](./auth.md)` resolves to `docs/auth.md`.
 
 **Decision:** Option B - better for large, organized projects
 
@@ -368,7 +370,7 @@ temp_dir/
 ## Alignment with Node [14]: Core Priorities
 
 ### Security ✅
-- **Path traversal:** Canonicalize paths, validate no escapes
+- **Path traversal:** Canonicalize paths, validate no escapes, reject absolute (POSIX/Windows/UNC)
 - **Resource limits:** File size check, depth limit
 - **Cycles:** Visited tracking, cycle detection
 - **Symlinks:** fs::canonicalize resolves all
