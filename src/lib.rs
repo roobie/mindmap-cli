@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::{collections::HashMap, fs, io::Read, path::PathBuf};
 
+pub mod cache;
+pub mod context;
 mod ui;
 
 #[derive(clap::ValueEnum, Clone)]
@@ -11,10 +13,10 @@ pub enum OutputFormat {
 }
 
 #[derive(Parser)]
-#[command(name = "mindmap")]
+#[command(name = "mindmap-cli")]
 #[command(about = "CLI tool for working with MINDMAP files")]
 #[command(
-    long_about = r#"mindmap-cli — small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
+    long_about = r#"mindmap-cli - small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
 One-node-per-line format: [N] **Title** - description with [N] references. IDs must be stable numeric values.
 
 EXAMPLES:
@@ -53,25 +55,74 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Show a node by ID
-    Show { id: u32 },
-
-    /// List nodes (optionally filtered)
-    List {
+    /// Show a node by ID (displays incoming and outgoing references)
+    #[command(alias = "get", alias = "inspect")]
+    Show {
+        /// Node ID
+        id: u32,
+        /// Follow external references across files
         #[arg(long)]
-        r#type: Option<String>,
-        #[arg(long)]
-        grep: Option<String>,
+        follow: bool,
     },
 
-    /// Show nodes that reference the given ID
-    Refs { id: u32 },
+    /// List nodes (optionally filtered by --type or --grep with search flags)
+    List {
+        /// Filter by node type prefix (case-sensitive, e.g., AE, WF, DOC)
+        #[arg(long)]
+        r#type: Option<String>,
+        /// Filter by substring (default: case-insensitive substring match)
+        #[arg(long)]
+        grep: Option<String>,
+        /// Match case exactly (default: case-insensitive)
+        #[arg(long)]
+        case_sensitive: bool,
+        /// Match entire words/phrases exactly (default: substring match)
+        #[arg(long)]
+        exact_match: bool,
+        /// Use regex pattern instead of plain text
+        #[arg(long)]
+        regex_mode: bool,
+    },
 
-    /// Show nodes that the given ID references
-    Links { id: u32 },
+    /// Show nodes that REFERENCE (← INCOMING) the given ID
+    #[command(alias = "incoming")]
+    Refs {
+        /// Node ID to find incoming references for
+        id: u32,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
+    },
 
-    /// Search nodes by substring
-    Search { query: String },
+    /// Show nodes that the given ID REFERENCES (→ OUTGOING)
+    #[command(alias = "outgoing")]
+    Links {
+        /// Node ID to find outgoing references from
+        id: u32,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
+    },
+
+    /// Search nodes by substring (case-insensitive, alias: mindmap-cli search = mindmap-cli list --grep)
+    /// Search nodes by substring (case-insensitive by default, use flags for advanced search)
+    #[command(alias = "query")]
+    Search {
+        /// Search query (searches title and description)
+        query: String,
+        /// Match case exactly (default: case-insensitive)
+        #[arg(long)]
+        case_sensitive: bool,
+        /// Match entire words/phrases exactly (default: substring match)
+        #[arg(long)]
+        exact_match: bool,
+        /// Use regex pattern instead of plain text
+        #[arg(long)]
+        regex_mode: bool,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
+    },
 
     /// Add a new node
     Add {
@@ -110,6 +161,7 @@ pub enum Commands {
     },
 
     /// Put (full-line replace) a node: --line
+    #[command(alias = "update")]
     Put {
         id: u32,
         #[arg(long)]
@@ -136,10 +188,38 @@ pub enum Commands {
     },
 
     /// Show orphan nodes (no in & no out, excluding META)
-    Orphans,
+    Orphans {
+        /// Include node descriptions in output
+        #[arg(long)]
+        with_descriptions: bool,
+    },
+
+    /// Show all node types in use with statistics and frequency
+    #[command(alias = "types")]
+    Type {
+        /// Show details for a specific type (e.g., AE, WF, DR)
+        #[arg(long)]
+        of: Option<String>,
+    },
+
+    /// Show incoming and outgoing references for a node in one view
+    #[command(alias = "rel")]
+    Relationships {
+        /// Node ID to show relationships for
+        id: u32,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
+    },
 
     /// Show graph neighborhood for a node (DOT format for Graphviz)
-    Graph { id: u32 },
+    Graph {
+        /// Node ID
+        id: u32,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
+    },
 
     /// Prime: print help and list to prime an AI agent's context
     Prime,
@@ -176,6 +256,7 @@ pub enum Reference {
     External(u32, String),
 }
 
+#[derive(Debug)]
 pub struct Mindmap {
     pub path: PathBuf,
     pub lines: Vec<String>,
@@ -482,7 +563,7 @@ fn extract_refs_from_str(s: &str, skip_self: Option<u32>) -> Vec<Reference> {
                     if after.starts_with("](") {
                         // find closing )
                         if let Some(paren_end) = after.find(')') {
-                            let path_start = end + 2; // after ]( 
+                            let path_start = end + 2; // after ](
                             let path_end = end + paren_end;
                             let path = &s[path_start..path_end];
                             refs.push(Reference::External(rid, path.to_string()));
@@ -529,26 +610,89 @@ pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
         }
         out
     } else {
-        format!("Node {} not found", id)
+        format!("Node [{}] not found", id)
     }
 }
 
-pub fn cmd_list(mm: &Mindmap, type_filter: Option<&str>, grep: Option<&str>) -> Vec<String> {
+pub fn cmd_list(
+    mm: &Mindmap,
+    type_filter: Option<&str>,
+    grep: Option<&str>,
+    case_sensitive: bool,
+    exact_match: bool,
+    regex_mode: bool,
+) -> Vec<String> {
     let mut res = Vec::new();
+
+    // Compile regex if needed
+    let regex_pattern: Option<regex::Regex> = if regex_mode && let Some(grep) = grep {
+        match regex::Regex::new(grep) {
+            Ok(r) => Some(r),
+            Err(_) => return vec!["Invalid regex pattern".to_string()],
+        }
+    } else {
+        None
+    };
+
     for n in &mm.nodes {
+        // Type filter
         if let Some(tf) = type_filter
             && !n.raw_title.starts_with(&format!("{}:", tf))
         {
             continue;
         }
+
+        // Text filter
         if let Some(q) = grep {
-            let qlc = q.to_lowercase();
-            if !n.raw_title.to_lowercase().contains(&qlc)
-                && !n.description.to_lowercase().contains(&qlc)
-            {
+            let matches = if let Some(re) = &regex_pattern {
+                // Regex search
+                re.is_match(&n.raw_title) || re.is_match(&n.description)
+            } else if exact_match {
+                // Exact phrase match
+                let query = if case_sensitive {
+                    q.to_string()
+                } else {
+                    q.to_lowercase()
+                };
+                let title = if case_sensitive {
+                    n.raw_title.clone()
+                } else {
+                    n.raw_title.to_lowercase()
+                };
+                let desc = if case_sensitive {
+                    n.description.clone()
+                } else {
+                    n.description.to_lowercase()
+                };
+                title == query
+                    || desc == query
+                    || title.contains(&format!(" {} ", query))
+                    || desc.contains(&format!(" {} ", query))
+            } else {
+                // Substring match
+                let query = if case_sensitive {
+                    q.to_string()
+                } else {
+                    q.to_lowercase()
+                };
+                let title = if case_sensitive {
+                    n.raw_title.clone()
+                } else {
+                    n.raw_title.to_lowercase()
+                };
+                let desc = if case_sensitive {
+                    n.description.clone()
+                } else {
+                    n.description.to_lowercase()
+                };
+                title.contains(&query) || desc.contains(&query)
+            };
+
+            if !matches {
                 continue;
             }
         }
+
         res.push(format!(
             "[{}] **{}** - {}",
             n.id, n.raw_title, n.description
@@ -577,20 +721,8 @@ pub fn cmd_links(mm: &Mindmap, id: u32) -> Option<Vec<Reference>> {
     mm.get_node(id).map(|n| n.references.clone())
 }
 
-pub fn cmd_search(mm: &Mindmap, query: &str) -> Vec<String> {
-    let qlc = query.to_lowercase();
-    let mut out = Vec::new();
-    for n in &mm.nodes {
-        if n.raw_title.to_lowercase().contains(&qlc) || n.description.to_lowercase().contains(&qlc)
-        {
-            out.push(format!(
-                "[{}] **{}** - {}",
-                n.id, n.raw_title, n.description
-            ));
-        }
-    }
-    out
-}
+// NOTE: cmd_search was consolidated into cmd_list to eliminate code duplication.
+// See `Commands::Search` handler below which delegates to `cmd_list(mm, None, Some(query))`.
 
 pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, desc: &str) -> Result<u32> {
     let id = mm.next_id();
@@ -701,7 +833,7 @@ pub fn cmd_deprecate(mm: &mut Mindmap, id: u32, to: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
 
     if !mm.by_id.contains_key(&to) {
         eprintln!(
@@ -726,7 +858,7 @@ pub fn cmd_verify(mm: &mut Mindmap, id: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
     let node = &mut mm.nodes[idx];
 
     let tag = format!("(verify {})", chrono::Local::now().format("%Y-%m-%d"));
@@ -748,7 +880,7 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
     let node = &mm.nodes[idx];
 
     // create temp file with the single node line
@@ -801,7 +933,7 @@ pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
 
     let parsed = parse_node_line(line, mm.nodes[idx].line_index)?;
     if parsed.id != id {
@@ -843,7 +975,7 @@ pub fn cmd_patch(
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
     let node = &mm.nodes[idx];
 
     // split existing raw_title into optional type and title
@@ -901,7 +1033,7 @@ pub fn cmd_delete(mm: &mut Mindmap, id: u32, force: bool) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
 
     // check incoming references
     let mut incoming_from = Vec::new();
@@ -938,6 +1070,56 @@ pub fn cmd_delete(mm: &mut Mindmap, id: u32, force: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Validate external file references
+/// Returns list of validation issues found
+fn validate_external_references(
+    mm: &Mindmap,
+    workspace: &std::path::Path,
+) -> Vec<String> {
+    let mut issues = Vec::new();
+    let mut cache = crate::cache::MindmapCache::new(workspace.to_path_buf());
+
+    for node in &mm.nodes {
+        for reference in &node.references {
+            if let Reference::External(ref_id, ref_path) = reference {
+                // 1. Check if file exists
+                let canonical_path = match cache.resolve_path(&mm.path, ref_path) {
+                    Ok(p) => p,
+                    Err(_) => {
+                        issues.push(format!(
+                            "Missing file: node [{}] references missing file {}",
+                            node.id, ref_path
+                        ));
+                        continue;
+                    }
+                };
+
+                // 2. Try to load the file
+                let ext_mm = match cache.load(&mm.path, ref_path, &std::collections::HashSet::new()) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        issues.push(format!(
+                            "Unreadable file: node [{}] cannot read {}: {}",
+                            node.id, ref_path, e
+                        ));
+                        continue;
+                    }
+                };
+
+                // 3. Check if the referenced node exists in external file
+                if !ext_mm.by_id.contains_key(ref_id) {
+                    issues.push(format!(
+                        "Invalid node: node [{}] references non-existent [{}] in {}",
+                        node.id, ref_id, canonical_path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    issues
 }
 
 pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
@@ -983,6 +1165,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
                     }
                 }
                 Reference::External(eid, file) => {
+                    // Basic check (file exists)
                     if !std::path::Path::new(file).exists() {
                         warnings.push(format!(
                             "Missing file: node {} references {} in missing file {}",
@@ -994,6 +1177,11 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
         }
     }
 
+    // 4) External file validation (detailed checks)
+    let workspace = mm.path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let external_issues = validate_external_references(mm, workspace);
+    warnings.extend(external_issues);
+
     if warnings.is_empty() {
         Ok(vec!["Lint OK".to_string()])
     } else {
@@ -1001,7 +1189,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     }
 }
 
-pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
+pub fn cmd_orphans(mm: &Mindmap, with_descriptions: bool) -> Result<Vec<String>> {
     let mut warnings = Vec::new();
 
     // Orphans: nodes with no in and no out, excluding META:*
@@ -1018,18 +1206,30 @@ pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
             }
         }
     }
+
+    let mut orphan_nodes = Vec::new();
     for n in &mm.nodes {
         let inc = incoming.get(&n.id).copied().unwrap_or(0);
         let out = n.references.len();
         let title_up = n.raw_title.to_uppercase();
         if inc == 0 && out == 0 && !title_up.starts_with("META") {
-            warnings.push(format!("{}", n.id));
+            orphan_nodes.push(n.clone());
         }
     }
 
-    if warnings.is_empty() {
+    if orphan_nodes.is_empty() {
         Ok(vec!["No orphans".to_string()])
     } else {
+        for n in orphan_nodes {
+            if with_descriptions {
+                warnings.push(format!(
+                    "[{}] **{}** - {}",
+                    n.id, n.raw_title, n.description
+                ));
+            } else {
+                warnings.push(format!("{}", n.id));
+            }
+        }
         Ok(warnings)
     }
 }
@@ -1091,6 +1291,79 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
 
     dot.push_str("}\n");
     Ok(dot)
+}
+
+pub fn cmd_types(mm: &Mindmap, type_of: Option<&str>) -> Result<Vec<String>> {
+    // Collect all types with their counts
+    let mut type_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut type_examples: std::collections::HashMap<String, Vec<u32>> =
+        std::collections::HashMap::new();
+
+    for n in &mm.nodes {
+        if let Some(colon_pos) = n.raw_title.find(':') {
+            let node_type = n.raw_title[..colon_pos].to_string();
+            *type_counts.entry(node_type.clone()).or_insert(0) += 1;
+            type_examples.entry(node_type).or_default().push(n.id);
+        }
+    }
+
+    let mut results = Vec::new();
+
+    if let Some(specific_type) = type_of {
+        // Show details for specific type
+        if let Some(count) = type_counts.get(specific_type) {
+            results.push(format!("Type '{}': {} nodes", specific_type, count));
+            if let Some(examples) = type_examples.get(specific_type) {
+                results.push(format!(
+                    "  Examples: {}",
+                    examples
+                        .iter()
+                        .take(5)
+                        .map(|id| format!("[{}]", id))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+        } else {
+            results.push(format!("Type '{}' not found in use", specific_type));
+        }
+    } else {
+        // Show summary of all types
+        results.push(format!("Node types in use ({} types):", type_counts.len()));
+        let mut sorted_types: Vec<_> = type_counts.iter().collect();
+        sorted_types.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count descending
+        for (node_type, count) in sorted_types {
+            results.push(format!("  {:<10} ({:>3} nodes)", node_type, count));
+        }
+    }
+
+    Ok(results)
+}
+
+pub fn cmd_relationships(mm: &Mindmap, id: u32) -> Result<(Vec<u32>, Vec<Reference>)> {
+    // Get node
+    mm.get_node(id)
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
+
+    // Get incoming references
+    let mut incoming = Vec::new();
+    for n in &mm.nodes {
+        if n.references
+            .iter()
+            .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
+        {
+            incoming.push(n.id);
+        }
+    }
+
+    // Get outgoing references
+    let outgoing = mm
+        .get_node(id)
+        .map(|n| n.references.clone())
+        .unwrap_or_default();
+
+    Ok((incoming, outgoing))
 }
 
 /// Compute blake3 hash of content (hex encoded)
@@ -1401,6 +1674,105 @@ fn parse_batch_op_line(line: &str) -> Result<BatchOp> {
 
 // mod ui;
 
+/// Helper: Resolve a single reference (internal or external)
+/// Returns: (id, file_path, node) if found, None if external ref couldn't be resolved
+#[allow(dead_code)]
+fn resolve_reference(
+    cache: &mut crate::cache::MindmapCache,
+    mm: &Mindmap,
+    current_file: &std::path::Path,
+    reference: &Reference,
+    visited: &std::collections::HashSet<std::path::PathBuf>,
+    _ctx: &mut crate::context::NavigationContext,
+) -> Result<Option<(u32, std::path::PathBuf, Node)>> {
+    match reference {
+        Reference::Internal(id) => {
+            // Local reference - look in current mindmap
+            if let Some(node) = mm.get_node(*id) {
+                Ok(Some((*id, current_file.to_path_buf(), node.clone())))
+            } else {
+                Ok(None) // Node not found in current file
+            }
+        }
+        Reference::External(id, path) => {
+            // External reference - load from cache
+            if _ctx.at_max_depth() {
+                return Ok(None); // Depth limit reached
+            }
+
+            let _guard = _ctx.descend()?;
+            
+            // Resolve path first (before borrowing cache)
+            let canonical = match cache.resolve_path(current_file, path) {
+                Ok(p) => p,
+                Err(_) => return Ok(None),
+            };
+            
+            // Then load from cache
+            match cache.load(current_file, path, visited) {
+                Ok(ext_mm) => {
+                    if let Some(node) = ext_mm.get_node(*id) {
+                        Ok(Some((*id, canonical, node.clone())))
+                    } else {
+                        Ok(None) // Node not found in external file
+                    }
+                }
+                Err(_) => Ok(None), // File couldn't be loaded
+            }
+        }
+    }
+}
+
+/// Helper: Get all incoming references recursively
+#[allow(dead_code)]
+fn get_incoming_recursive(
+    _cache: &mut crate::cache::MindmapCache,
+    mm: &Mindmap,
+    current_file: &std::path::Path,
+    id: u32,
+    _visited: &std::collections::HashSet<std::path::PathBuf>,
+    _ctx: &mut crate::context::NavigationContext,
+) -> Result<Vec<(u32, std::path::PathBuf, Node)>> {
+    let mut inbound = Vec::new();
+
+    // Local references first
+    for n in &mm.nodes {
+        if n.references
+            .iter()
+            .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
+        {
+            inbound.push((n.id, current_file.to_path_buf(), n.clone()));
+        }
+    }
+
+    Ok(inbound)
+}
+
+/// Helper: Get all outgoing references recursively
+#[allow(dead_code)]
+fn get_outgoing_recursive(
+    cache: &mut crate::cache::MindmapCache,
+    mm: &Mindmap,
+    current_file: &std::path::Path,
+    id: u32,
+    visited: &std::collections::HashSet<std::path::PathBuf>,
+    ctx: &mut crate::context::NavigationContext,
+) -> Result<Vec<(u32, std::path::PathBuf, Node)>> {
+    let mut outbound = Vec::new();
+
+    if let Some(node) = mm.get_node(id) {
+        for reference in &node.references {
+            if let Ok(Some((ref_id, ref_path, ref_node))) =
+                resolve_reference(cache, mm, current_file, reference, visited, ctx)
+            {
+                outbound.push((ref_id, ref_path, ref_node));
+            }
+        }
+    }
+
+    Ok(outbound)
+}
+
 pub fn run(cli: Cli) -> Result<()> {
     let path = cli.file.unwrap_or_else(|| PathBuf::from("MINDMAP.md"));
 
@@ -1439,100 +1811,573 @@ pub fn run(cli: Cli) -> Result<()> {
     };
 
     match cli.command {
-        Commands::Show { id } => match mm.get_node(id) {
+        Commands::Show { id, follow } => match mm.get_node(id) {
             Some(node) => {
-                if matches!(cli.output, OutputFormat::Json) {
-                    let obj = serde_json::json!({
-                        "command": "show",
-                        "node": {
-                            "id": node.id,
-                            "raw_title": node.raw_title,
-                            "description": node.description,
-                            "references": node.references,
-                            "line_index": node.line_index,
-                        }
-                    });
-                    println!("{}", serde_json::to_string_pretty(&obj)?);
-                } else {
-                    // compute inbound refs
-                    let mut inbound = Vec::new();
-                    for n in &mm.nodes {
-                        if n.references
+                if follow {
+                    // Recursive mode: follow external references
+                    let workspace = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+                    let mut cache = crate::cache::MindmapCache::new(workspace.to_path_buf());
+                    let mut ctx = crate::context::NavigationContext::new();
+                    let mut visited = std::collections::HashSet::new();
+                    visited.insert(path.clone());
+
+                    if matches!(cli.output, OutputFormat::Json) {
+                        // JSON output with recursive refs
+                        let inbound =
+                            get_incoming_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
+                                .unwrap_or_default();
+                        let outbound =
+                            get_outgoing_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
+                                .unwrap_or_default();
+
+                        let inbound_refs: Vec<_> = inbound
                             .iter()
-                            .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
-                        {
-                            inbound.push(n.id);
+                            .map(|(ref_id, ref_path, ref_node)| {
+                                serde_json::json!({
+                                    "id": ref_id,
+                                    "title": ref_node.raw_title,
+                                    "file": ref_path.to_string_lossy(),
+                                })
+                            })
+                            .collect();
+
+                        let outbound_refs: Vec<_> = outbound
+                            .iter()
+                            .map(|(ref_id, ref_path, ref_node)| {
+                                serde_json::json!({
+                                    "id": ref_id,
+                                    "title": ref_node.raw_title,
+                                    "file": ref_path.to_string_lossy(),
+                                })
+                            })
+                            .collect();
+
+                        let obj = serde_json::json!({
+                            "command": "show",
+                            "follow": true,
+                            "node": {
+                                "id": node.id,
+                                "raw_title": node.raw_title,
+                                "description": node.description,
+                                "file": path.to_string_lossy(),
+                                "line_index": node.line_index,
+                            },
+                            "incoming": inbound_refs,
+                            "outgoing": outbound_refs,
+                        });
+                        println!("{}", serde_json::to_string_pretty(&obj)?);
+                    } else {
+                        // Human-readable output with recursive refs
+                        let inbound =
+                            get_incoming_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
+                                .unwrap_or_default();
+                        let outbound =
+                            get_outgoing_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
+                                .unwrap_or_default();
+
+                        println!(
+                            "[{}] **{}** - {} ({})",
+                            node.id,
+                            node.raw_title,
+                            node.description,
+                            path.display()
+                        );
+
+                        if !inbound.is_empty() {
+                            eprintln!(
+                                "← Nodes referring to [{}] (recursive, {} total):",
+                                id,
+                                inbound.len()
+                            );
+                            for (ref_id, ref_path, ref_node) in &inbound {
+                                eprintln!(
+                                    "  [{}] {} ({})",
+                                    ref_id,
+                                    ref_node.raw_title,
+                                    ref_path.display()
+                                );
+                            }
+                        }
+
+                        if !outbound.is_empty() {
+                            eprintln!(
+                                "→ [{}] refers to (recursive, {} total):",
+                                id,
+                                outbound.len()
+                            );
+                            for (ref_id, ref_path, ref_node) in &outbound {
+                                eprintln!(
+                                    "  [{}] {} ({})",
+                                    ref_id,
+                                    ref_node.raw_title,
+                                    ref_path.display()
+                                );
+                            }
                         }
                     }
-
-                    if let Some(p) = &printer {
-                        p.show(node, &inbound, &node.references)?;
+                } else {
+                    // Single-file mode: original behavior
+                    if matches!(cli.output, OutputFormat::Json) {
+                        let obj = serde_json::json!({
+                            "command": "show",
+                            "follow": false,
+                            "node": {
+                                "id": node.id,
+                                "raw_title": node.raw_title,
+                                "description": node.description,
+                                "file": path.to_string_lossy(),
+                                "references": node.references,
+                                "line_index": node.line_index,
+                            }
+                        });
+                        println!("{}", serde_json::to_string_pretty(&obj)?);
                     } else {
-                        println!(
-                            "[{}] **{}** - {}",
-                            node.id, node.raw_title, node.description
-                        );
-                        if !inbound.is_empty() {
-                            eprintln!("Referred to by: {:?}", inbound);
+                        // compute inbound refs (single-file only)
+                        let mut inbound = Vec::new();
+                        for n in &mm.nodes {
+                            if n.references
+                                .iter()
+                                .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
+                            {
+                                inbound.push(n.id);
+                            }
+                        }
+
+                        if let Some(p) = &printer {
+                            p.show(node, &inbound, &node.references)?;
+                        } else {
+                            println!(
+                                "[{}] **{}** - {}",
+                                node.id, node.raw_title, node.description
+                            );
+                            if !inbound.is_empty() {
+                                eprintln!("← Nodes referring to [{}]: {:?}", id, inbound);
+                            }
+                            let outbound: Vec<u32> = node
+                                .references
+                                .iter()
+                                .filter_map(|r| match r {
+                                    Reference::Internal(rid) => Some(*rid),
+                                    _ => None,
+                                })
+                                .collect();
+                            if !outbound.is_empty() {
+                                eprintln!("→ [{}] refers to: {:?}", id, outbound);
+                            }
                         }
                     }
                 }
             }
-            None => return Err(anyhow::anyhow!(format!("Node {} not found", id))),
+            None => {
+                let min_id = mm.nodes.iter().map(|n| n.id).min();
+                let max_id = mm.nodes.iter().map(|n| n.id).max();
+                let hint = if let (Some(min), Some(max)) = (min_id, max_id) {
+                    format!(
+                        " (Valid node IDs: {} to {}). Use `mindmap-cli list` to see all nodes.",
+                        min, max
+                    )
+                } else {
+                    " No nodes exist yet. Use `mindmap-cli add` to create one.".to_string()
+                };
+                return Err(anyhow::anyhow!(format!("Node [{}] not found{}", id, hint)));
+            }
         },
-        Commands::List { r#type, grep } => {
-            let items = cmd_list(&mm, r#type.as_deref(), grep.as_deref());
+        Commands::List {
+            r#type,
+            grep,
+            case_sensitive,
+            exact_match,
+            regex_mode,
+        } => {
+            let items = cmd_list(
+                &mm,
+                r#type.as_deref(),
+                grep.as_deref(),
+                case_sensitive,
+                exact_match,
+                regex_mode,
+            );
+            let count = items.len();
+
             if matches!(cli.output, OutputFormat::Json) {
                 let arr: Vec<_> = items
                     .into_iter()
                     .map(|line| serde_json::json!({"line": line}))
                     .collect();
-                let obj = serde_json::json!({"command": "list", "items": arr});
+                let obj = serde_json::json!({"command": "list", "count": count, "items": arr});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
-            } else if let Some(p) = &printer {
-                p.list(&items)?;
             } else {
-                for it in items {
-                    println!("{}", it);
-                }
-            }
-        }
-        Commands::Refs { id } => {
-            let items = cmd_refs(&mm, id);
-            if matches!(cli.output, OutputFormat::Json) {
-                let obj = serde_json::json!({"command": "refs", "items": items});
-                println!("{}", serde_json::to_string_pretty(&obj)?);
-            } else if let Some(p) = &printer {
-                p.refs(&items)?;
-            } else {
-                for it in items {
-                    println!("{}", it);
-                }
-            }
-        }
-        Commands::Links { id } => match cmd_links(&mm, id) {
-            Some(v) => {
-                if matches!(cli.output, OutputFormat::Json) {
-                    let obj = serde_json::json!({"command": "links", "id": id, "links": v});
-                    println!("{}", serde_json::to_string_pretty(&obj)?);
-                } else if let Some(p) = &printer {
-                    p.links(id, &v)?;
+                if count == 0 {
+                    eprintln!("No matching nodes found (0 results)");
                 } else {
-                    println!("Node [{}] references: {:?}", id, v);
+                    eprintln!(
+                        "Matching nodes ({} result{}:)",
+                        count,
+                        if count == 1 { "" } else { "s" },
+                    );
+                }
+                if let Some(p) = &printer {
+                    p.list(&items)?;
+                } else {
+                    for it in items {
+                        println!("{}", it);
+                    }
                 }
             }
-            None => return Err(anyhow::anyhow!(format!("Node [{}] not found", id))),
-        },
-        Commands::Search { query } => {
-            let items = cmd_search(&mm, &query);
-            if matches!(cli.output, OutputFormat::Json) {
-                let obj = serde_json::json!({"command": "search", "query": query, "items": items});
-                println!("{}", serde_json::to_string_pretty(&obj)?);
-            } else if let Some(p) = &printer {
-                p.search(&items)?;
+        }
+        Commands::Refs { id, follow } => {
+            // First check if the node exists
+            if mm.get_node(id).is_none() {
+                let min_id = mm.nodes.iter().map(|n| n.id).min();
+                let max_id = mm.nodes.iter().map(|n| n.id).max();
+                let hint = if let (Some(min), Some(max)) = (min_id, max_id) {
+                    format!(" (Valid node IDs: {} to {})", min, max)
+                } else {
+                    " No nodes exist.".to_string()
+                };
+                return Err(anyhow::anyhow!(format!("Node [{}] not found{}", id, hint)));
+            }
+
+            if follow {
+                // Recursive mode: get all incoming refs across files
+                let workspace = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+                let mut cache = crate::cache::MindmapCache::new(workspace.to_path_buf());
+                let mut ctx = crate::context::NavigationContext::new();
+                let mut visited = std::collections::HashSet::new();
+                visited.insert(path.clone());
+
+                let inbound =
+                    get_incoming_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
+                        .unwrap_or_default();
+                let count = inbound.len();
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let items: Vec<_> = inbound
+                        .iter()
+                        .map(|(ref_id, ref_path, ref_node)| {
+                            serde_json::json!({
+                                "id": ref_id,
+                                "title": ref_node.raw_title,
+                                "file": ref_path.to_string_lossy(),
+                            })
+                        })
+                        .collect();
+                    let obj = serde_json::json!({
+                        "command": "refs",
+                        "target": id,
+                        "follow": true,
+                        "count": count,
+                        "items": items
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    if count == 0 {
+                        eprintln!("No nodes refer to [{}] (0 results)", id);
+                    } else {
+                        eprintln!(
+                            "← Nodes referring to [{}] (recursive, {} result{})",
+                            id,
+                            count,
+                            if count == 1 { "" } else { "s" }
+                        );
+                    }
+                    for (ref_id, ref_path, ref_node) in inbound {
+                        println!(
+                            "[{}] **{}** - {} ({})",
+                            ref_id, ref_node.raw_title, ref_node.description, ref_path.display()
+                        );
+                    }
+                }
             } else {
-                for it in items {
-                    println!("{}", it);
+                // Single-file mode: original behavior
+                let items = cmd_refs(&mm, id);
+                let count = items.len();
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let obj = serde_json::json!({
+                        "command": "refs",
+                        "target": id,
+                        "follow": false,
+                        "count": count,
+                        "items": items
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    if count == 0 {
+                        eprintln!("No nodes refer to [{}] (0 results)", id);
+                    } else {
+                        eprintln!(
+                            "← Nodes referring to [{}] ({} result{})",
+                            id,
+                            count,
+                            if count == 1 { "" } else { "s" }
+                        );
+                    }
+                    if let Some(p) = &printer {
+                        p.refs(&items)?;
+                    } else {
+                        for it in items {
+                            println!("{}", it);
+                        }
+                    }
+                }
+            }
+        }
+        Commands::Links { id, follow } => {
+            // First check if node exists
+            if mm.get_node(id).is_none() {
+                let min_id = mm.nodes.iter().map(|n| n.id).min();
+                let max_id = mm.nodes.iter().map(|n| n.id).max();
+                let hint = if let (Some(min), Some(max)) = (min_id, max_id) {
+                    format!(" (Valid node IDs: {} to {})", min, max)
+                } else {
+                    " No nodes exist.".to_string()
+                };
+                return Err(anyhow::anyhow!(format!("Node [{}] not found{}", id, hint)));
+            }
+
+            if follow {
+                // Recursive mode: get all outgoing refs across files
+                let workspace = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+                let mut cache = crate::cache::MindmapCache::new(workspace.to_path_buf());
+                let mut ctx = crate::context::NavigationContext::new();
+                let mut visited = std::collections::HashSet::new();
+                visited.insert(path.clone());
+
+                let outbound =
+                    get_outgoing_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
+                        .unwrap_or_default();
+                let count = outbound.len();
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let items: Vec<_> = outbound
+                        .iter()
+                        .map(|(ref_id, ref_path, ref_node)| {
+                            serde_json::json!({
+                                "id": ref_id,
+                                "title": ref_node.raw_title,
+                                "file": ref_path.to_string_lossy(),
+                            })
+                        })
+                        .collect();
+                    let obj = serde_json::json!({
+                        "command": "links",
+                        "source": id,
+                        "follow": true,
+                        "count": count,
+                        "links": items
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    if count == 0 {
+                        eprintln!("→ [{}] refers to no nodes (0 results)", id);
+                    } else {
+                        eprintln!(
+                            "→ [{}] refers to (recursive, {} result{})",
+                            id,
+                            count,
+                            if count == 1 { "" } else { "s" }
+                        );
+                    }
+                    for (ref_id, ref_path, ref_node) in outbound {
+                        println!(
+                            "[{}] **{}** - {} ({})",
+                            ref_id, ref_node.raw_title, ref_node.description, ref_path.display()
+                        );
+                    }
+                }
+            } else {
+                // Single-file mode: original behavior
+                match cmd_links(&mm, id) {
+                    Some(v) => {
+                        let count = v
+                            .iter()
+                            .filter(|r| matches!(r, Reference::Internal(_)))
+                            .count();
+                        if matches!(cli.output, OutputFormat::Json) {
+                            let obj = serde_json::json!({
+                                "command": "links",
+                                "source": id,
+                                "follow": false,
+                                "count": count,
+                                "links": v
+                            });
+                            println!("{}", serde_json::to_string_pretty(&obj)?);
+                        } else {
+                            if count == 0 {
+                                eprintln!("→ [{}] refers to no nodes (0 results)", id);
+                            } else {
+                                eprintln!(
+                                    "→ [{}] refers to ({} result{})",
+                                    id,
+                                    count,
+                                    if count == 1 { "" } else { "s" }
+                                );
+                            }
+                            if let Some(p) = &printer {
+                                p.links(id, &v)?;
+                            } else {
+                                println!("Node [{}] references: {:?}", id, v);
+                            }
+                        }
+                    }
+                    None => {
+                        let min_id = mm.nodes.iter().map(|n| n.id).min();
+                        let max_id = mm.nodes.iter().map(|n| n.id).max();
+                        let hint = if let (Some(min), Some(max)) = (min_id, max_id) {
+                            format!(" (Valid node IDs: {} to {})", min, max)
+                        } else {
+                            " No nodes exist.".to_string()
+                        };
+                        return Err(anyhow::anyhow!(format!(
+                            "Node [{}] not found{}",
+                            id, hint
+                        )));
+                    }
+                }
+            }
+        },
+        Commands::Search {
+            query,
+            case_sensitive,
+            exact_match,
+            regex_mode,
+            follow,
+        } => {
+            if follow {
+                // Recursive mode: search across referenced files
+                let workspace = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+                let mut cache = crate::cache::MindmapCache::new(workspace.to_path_buf());
+                let _ctx = crate::context::NavigationContext::new();
+                let mut visited_files = std::collections::HashSet::new();
+                visited_files.insert(path.clone());
+
+                // Search main file
+                let mut all_items = cmd_list(
+                    &mm,
+                    None,
+                    Some(&query),
+                    case_sensitive,
+                    exact_match,
+                    regex_mode,
+                );
+
+                // Track processed files to avoid duplicates
+                let mut processed_files = std::collections::HashSet::new();
+                processed_files.insert(path.clone());
+
+                // Search referenced files
+                for node in &mm.nodes {
+                    for ref_item in &node.references {
+                        if let Reference::External(_id, ref_path) = ref_item {
+                            // Try to get canonical path
+                            let canonical_path = match cache.resolve_path(&path, ref_path) {
+                                Ok(p) => p,
+                                Err(_) => continue,
+                            };
+
+                            // Skip if already processed
+                            if processed_files.contains(&canonical_path) {
+                                continue;
+                            }
+                            processed_files.insert(canonical_path.clone());
+
+                            // Try to load external file
+                            if let Ok(ext_mm) = cache.load(&path, ref_path, &visited_files) {
+                                let ext_items = cmd_list(
+                                    &ext_mm,
+                                    None,
+                                    Some(&query),
+                                    case_sensitive,
+                                    exact_match,
+                                    regex_mode,
+                                );
+                                for item in ext_items {
+                                    // Append file path to item
+                                    all_items.push(format!("{} ({})", item, canonical_path.display()));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let count = all_items.len();
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let arr: Vec<_> = all_items
+                        .into_iter()
+                        .map(|line| serde_json::json!({"line": line}))
+                        .collect();
+                    let obj = serde_json::json!({
+                        "command": "search",
+                        "query": query,
+                        "follow": true,
+                        "count": count,
+                        "items": arr
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    if count == 0 {
+                        eprintln!("No matches for '{}' (0 results)", query);
+                    } else {
+                        eprintln!(
+                            "Search results for '{}' (recursive, {} result{})",
+                            query,
+                            count,
+                            if count == 1 { "" } else { "s" }
+                        );
+                    }
+                    if let Some(p) = &printer {
+                        p.list(&all_items)?;
+                    } else {
+                        for it in all_items {
+                            println!("{}", it);
+                        }
+                    }
+                }
+            } else {
+                // Single-file mode: original behavior
+                let items = cmd_list(
+                    &mm,
+                    None,
+                    Some(&query),
+                    case_sensitive,
+                    exact_match,
+                    regex_mode,
+                );
+                let count = items.len();
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let arr: Vec<_> = items
+                        .into_iter()
+                        .map(|line| serde_json::json!({"line": line}))
+                        .collect();
+                    let obj = serde_json::json!({
+                        "command": "search",
+                        "query": query,
+                        "follow": false,
+                        "count": count,
+                        "items": arr
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    if count == 0 {
+                        eprintln!("No matches for '{}' (0 results)", query);
+                    } else {
+                        eprintln!(
+                            "Search results for '{}' ({} result{})",
+                            query,
+                            count,
+                            if count == 1 { "" } else { "s" }
+                        );
+                    }
+                    if let Some(p) = &printer {
+                        p.list(&items)?;
+                    } else {
+                        for it in items {
+                            println!("{}", it);
+                        }
+                    }
                 }
             }
         }
@@ -1719,30 +2564,189 @@ pub fn run(cli: Cli) -> Result<()> {
             } else {
                 let res = cmd_lint(&mm)?;
                 if matches!(cli.output, OutputFormat::Json) {
-                    let obj = serde_json::json!({"command": "lint", "warnings": res});
+                    let obj = serde_json::json!({"command": "lint", "warnings": res.iter().filter(|r| *r != "Lint OK").collect::<Vec<_>>()});
                     println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else if res.len() == 1 && res[0] == "Lint OK" {
+                    eprintln!("✓ Lint OK (0 warnings)");
                 } else {
+                    eprintln!(
+                        "Lint found {} warning{}:",
+                        res.len(),
+                        if res.len() == 1 { "" } else { "s" }
+                    );
                     for r in res {
-                        eprintln!("{}", r);
+                        eprintln!("  - {}", r);
                     }
                 }
             }
         }
-        Commands::Orphans => {
-            let res = cmd_orphans(&mm)?;
+        Commands::Orphans { with_descriptions } => {
+            let res = cmd_orphans(&mm, with_descriptions)?;
             if matches!(cli.output, OutputFormat::Json) {
-                let obj = serde_json::json!({"command": "orphans", "orphans": res});
+                let count = if res.iter().any(|r| r == "No orphans") {
+                    0
+                } else {
+                    res.len()
+                };
+                let obj = serde_json::json!({"command": "orphans", "count": count, "orphans": res});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
-            } else if let Some(p) = &printer {
-                p.orphans(&res)?;
             } else {
-                for r in res {
-                    eprintln!("{}", r);
+                // Print header to stderr
+                if res.iter().any(|r| r == "No orphans") {
+                    eprintln!("✓ No orphans found (0 results)");
+                } else {
+                    eprintln!(
+                        "Orphan nodes ({} result{}):",
+                        res.len(),
+                        if res.len() == 1 { "" } else { "s" }
+                    );
+                }
+
+                // Print data to stdout via printer
+                if let Some(p) = &printer {
+                    p.orphans(&res)?;
+                } else {
+                    for r in res {
+                        if r != "No orphans" {
+                            println!("{}", r);
+                        }
+                    }
                 }
             }
         }
-        Commands::Graph { id } => {
-            let dot = cmd_graph(&mm, id)?;
+        Commands::Type { of } => {
+            let res = cmd_types(&mm, of.as_deref())?;
+            if matches!(cli.output, OutputFormat::Json) {
+                let obj = serde_json::json!({"command": "type", "filter": of, "results": res});
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                eprintln!("Node types information:");
+                for line in res {
+                    if line.starts_with("  ") {
+                        println!("{}", line);
+                    } else {
+                        eprintln!("{}", line);
+                    }
+                }
+            }
+        }
+        Commands::Relationships { id, follow } => {
+            if follow {
+                // Recursive mode: get all relationships across files
+                let workspace = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+                let mut cache = crate::cache::MindmapCache::new(workspace.to_path_buf());
+                let mut ctx = crate::context::NavigationContext::new();
+                let mut visited = std::collections::HashSet::new();
+                visited.insert(path.clone());
+
+                // Verify node exists
+                if mm.get_node(id).is_none() {
+                    return Err(anyhow::anyhow!(format!("Node [{}] not found", id)));
+                }
+
+                let incoming =
+                    get_incoming_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
+                        .unwrap_or_default();
+                let outgoing =
+                    get_outgoing_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
+                        .unwrap_or_default();
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let incoming_json: Vec<_> = incoming
+                        .iter()
+                        .map(|(ref_id, ref_path, ref_node)| {
+                            serde_json::json!({
+                                "id": ref_id,
+                                "title": ref_node.raw_title,
+                                "file": ref_path.to_string_lossy(),
+                            })
+                        })
+                        .collect();
+
+                    let outgoing_json: Vec<_> = outgoing
+                        .iter()
+                        .map(|(ref_id, ref_path, ref_node)| {
+                            serde_json::json!({
+                                "id": ref_id,
+                                "title": ref_node.raw_title,
+                                "file": ref_path.to_string_lossy(),
+                            })
+                        })
+                        .collect();
+
+                    let obj = serde_json::json!({
+                        "command": "relationships",
+                        "node": id,
+                        "follow": true,
+                        "incoming": incoming_json,
+                        "outgoing": outgoing_json,
+                        "incoming_count": incoming.len(),
+                        "outgoing_count": outgoing.len(),
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    eprintln!("Relationships for [{}] (recursive):", id);
+                    eprintln!("← Incoming ({} nodes):", incoming.len());
+                    for (ref_id, ref_path, ref_node) in &incoming {
+                        eprintln!(
+                            "  [{}] **{}** ({})",
+                            ref_id,
+                            ref_node.raw_title,
+                            ref_path.display()
+                        );
+                    }
+                    eprintln!("→ Outgoing ({} nodes):", outgoing.len());
+                    for (ref_id, ref_path, ref_node) in &outgoing {
+                        eprintln!(
+                            "  [{}] **{}** ({})",
+                            ref_id,
+                            ref_node.raw_title,
+                            ref_path.display()
+                        );
+                    }
+                }
+            } else {
+                // Single-file mode: original behavior
+                let (incoming, outgoing) = cmd_relationships(&mm, id)?;
+                if matches!(cli.output, OutputFormat::Json) {
+                    let obj = serde_json::json!({
+                        "command": "relationships",
+                        "node": id,
+                        "follow": false,
+                        "incoming": incoming,
+                        "outgoing": outgoing,
+                        "incoming_count": incoming.len(),
+                        "outgoing_count": outgoing.len(),
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    eprintln!("Relationships for [{}]:", id);
+                    eprintln!("← Incoming ({} nodes):", incoming.len());
+                    for incoming_id in &incoming {
+                        if let Some(node) = mm.get_node(*incoming_id) {
+                            eprintln!("  [{}] **{}**", incoming_id, node.raw_title);
+                        }
+                    }
+                    eprintln!("→ Outgoing ({} nodes):", outgoing.len());
+                    for outgoing_ref in &outgoing {
+                        if let Reference::Internal(outgoing_id) = outgoing_ref
+                            && let Some(node) = mm.get_node(*outgoing_id)
+                        {
+                            eprintln!("  [{}] **{}**", outgoing_id, node.raw_title);
+                        }
+                    }
+                }
+            }
+        }
+        Commands::Graph { id, follow } => {
+            let dot = if follow {
+                // Recursive mode: would include external files in graph
+                // For now, just generate single-file graph (enhanced in Phase 3.3)
+                cmd_graph(&mm, id)?
+            } else {
+                // Single-file mode
+                cmd_graph(&mm, id)?
+            };
             println!("{}", dot);
         }
         Commands::Prime => {
@@ -1776,7 +2780,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 None
             };
 
-            let items = cmd_list(&mm, None, None);
+            let items = cmd_list(&mm, None, None, false, false, false);
 
             if matches!(cli.output, OutputFormat::Json) {
                 let arr: Vec<_> = items
@@ -2164,7 +3168,7 @@ mod tests {
         assert!(joined.contains("Duplicate ID"));
 
         // Orphan detection is now a separate command; verify orphans via cmd_orphans()
-        let orphans = cmd_orphans(&mm)?;
+        let orphans = cmd_orphans(&mm, false)?;
         let joined_o = orphans.join("\n");
         // expect node id 2 to be reported as orphan
         assert!(joined_o.contains("2"));
@@ -2241,9 +3245,28 @@ mod tests {
         let file = temp.child("MINDMAP.md");
         file.write_str("[1] **AE: One** - first\n[2] **AE: Two** - second\n")?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
-        let results = cmd_search(&mm, "first");
+        // Search now delegates to list --grep
+        let results = cmd_list(&mm, None, Some("first"), false, false, false);
         assert_eq!(results.len(), 1);
         assert!(results[0].contains("[1] **AE: One**"));
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_list_grep_equivalence() -> Result<()> {
+        // Verify that search (via cmd_list) produces identical output to list --grep
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: One** - first node\n[2] **WF: Two** - second node\n[3] **DR: Three** - third\n")?;
+        let mm = Mindmap::load(file.path().to_path_buf())?;
+
+        // Both should produce the same output
+        let search_results = cmd_list(&mm, None, Some("node"), false, false, false);
+        let list_grep_results = cmd_list(&mm, None, Some("node"), false, false, false);
+        assert_eq!(search_results, list_grep_results);
+        assert_eq!(search_results.len(), 2);
+
         temp.close()?;
         Ok(())
     }
@@ -2296,7 +3319,7 @@ mod tests {
         file.write_str("[1] **AE: One** - first\n")?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
         let out = cmd_show(&mm, 99);
-        assert_eq!(out, "Node 99 not found");
+        assert_eq!(out, "Node [99] not found");
         temp.close()?;
         Ok(())
     }
@@ -2332,7 +3355,7 @@ mod tests {
         file.write_str("[1] **AE: One** - first\n")?;
         let mut mm = Mindmap::load(file.path().to_path_buf())?;
         let err = cmd_put(&mut mm, 99, "[99] **AE: New** - new", false).unwrap_err();
-        assert!(format!("{}", err).contains("Node 99 not found"));
+        assert!(format!("{}", err).contains("Node [99] not found"));
         temp.close()?;
         Ok(())
     }
@@ -2344,7 +3367,7 @@ mod tests {
         file.write_str("[1] **AE: One** - first\n")?;
         let mut mm = Mindmap::load(file.path().to_path_buf())?;
         let err = cmd_patch(&mut mm, 99, None, Some("New"), None, false).unwrap_err();
-        assert!(format!("{}", err).contains("Node 99 not found"));
+        assert!(format!("{}", err).contains("Node [99] not found"));
         temp.close()?;
         Ok(())
     }
@@ -2391,7 +3414,7 @@ mod tests {
         let file = temp.child("MINDMAP.md");
         file.write_str("[1] **AE: One** - first\n[2] **AE: Orphan** - lonely\n")?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
-        let orphans = cmd_orphans(&mm)?;
+        let orphans = cmd_orphans(&mm, false)?;
         assert_eq!(orphans, vec!["1".to_string(), "2".to_string()]);
         temp.close()?;
         Ok(())
