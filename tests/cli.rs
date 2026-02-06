@@ -571,3 +571,44 @@ fn integration_cli_follow_flag() -> Result<(), Box<dyn std::error::Error>> {
     temp.close()?;
     Ok(())
 }
+
+#[test]
+fn integration_cli_recursive_search() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    
+    let main = temp.child("MAIN.md");
+    main.write_str(
+        "[1] **Main Search** - This is searchable\n\
+         [2] **Node Two** - References [10](./external.md)\n",
+    )?;
+
+    let external = temp.child("external.md");
+    external.write_str(
+        "[10] **External Search** - Also searchable\n",
+    )?;
+
+    // Test search without --follow
+    let mut cmd = mindmap_cmd();
+    cmd.arg("search")
+        .arg("searchable")
+        .arg("--file")
+        .arg(main.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Main Search"));
+
+    // Test search with --follow
+    let mut cmd = mindmap_cmd();
+    cmd.arg("search")
+        .arg("searchable")
+        .arg("--file")
+        .arg(main.path())
+        .arg("--follow");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Main Search"))
+        .stdout(predicate::str::contains("External Search"));
+
+    temp.close()?;
+    Ok(())
+}
