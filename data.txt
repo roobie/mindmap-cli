@@ -1,0 +1,4 @@
+[15] AE: mindmap-cli
+v0 implementation complete: Rust parser + CLI with 18 commands (show,list,search,refs,links,add,deprecate,verify,lint,edit,put,patch,delete,graph,orphans,batch,prime); atomic save, edit via $EDITOR, put/patch/delete with validation, --output json, batch mode with blake3 concurrency guard, stdin support for read-only ops, prime command to bootstrap AI agents. Phase 1 UX improvements: empty result messages, refs/links clarity with directional indicators, result counts, contextual error messages, orphans descriptions, README quick reference, enhanced help text. See [43][44] for details (updated 2026-02-06)
+← Referring nodes: [7, 9, 42, 43]
+→ References: [43, 44]

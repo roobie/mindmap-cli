@@ -612,6 +612,7 @@ dependencies = [
  "criterion",
  "predicates 2.1.5",
  "pretty-console",
+ "regex",
  "serde",
  "serde_json",
  "shell-words",

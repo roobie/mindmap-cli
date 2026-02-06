@@ -14,7 +14,7 @@ pub enum OutputFormat {
 #[command(name = "mindmap-cli")]
 #[command(about = "CLI tool for working with MINDMAP files")]
 #[command(
-    long_about = r#"mindmap-cli — small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
+    long_about = r#"mindmap-cli - small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
 One-node-per-line format: [N] **Title** - description with [N] references. IDs must be stable numeric values.
 
 EXAMPLES:
@@ -54,20 +54,29 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Show a node by ID (displays incoming and outgoing references)
+    #[command(alias = "get", alias = "inspect")]
     Show {
         /// Node ID
         id: u32,
     },
 
-    /// List nodes (optionally filtered by --type or --grep)
-    #[command(alias = "inspect")]
+    /// List nodes (optionally filtered by --type or --grep with search flags)
     List {
         /// Filter by node type prefix (case-sensitive, e.g., AE, WF, DOC)
         #[arg(long)]
         r#type: Option<String>,
-        /// Filter by substring (case-insensitive, searches title and description)
+        /// Filter by substring (default: case-insensitive substring match)
         #[arg(long)]
         grep: Option<String>,
+        /// Match case exactly (default: case-insensitive)
+        #[arg(long)]
+        case_sensitive: bool,
+        /// Match entire words/phrases exactly (default: substring match)
+        #[arg(long)]
+        exact_match: bool,
+        /// Use regex pattern instead of plain text
+        #[arg(long)]
+        regex_mode: bool,
     },
 
     /// Show nodes that REFERENCE (← INCOMING) the given ID
@@ -85,9 +94,20 @@ pub enum Commands {
     },
 
     /// Search nodes by substring (case-insensitive, alias: mindmap-cli search = mindmap-cli list --grep)
+    /// Search nodes by substring (case-insensitive by default, use flags for advanced search)
+    #[command(alias = "query")]
     Search {
-        /// Search query (searches title and description case-insensitively)
+        /// Search query (searches title and description)
         query: String,
+        /// Match case exactly (default: case-insensitive)
+        #[arg(long)]
+        case_sensitive: bool,
+        /// Match entire words/phrases exactly (default: substring match)
+        #[arg(long)]
+        exact_match: bool,
+        /// Use regex pattern instead of plain text
+        #[arg(long)]
+        regex_mode: bool,
     },
 
     /// Add a new node
@@ -127,6 +147,7 @@ pub enum Commands {
     },
 
     /// Put (full-line replace) a node: --line
+    #[command(alias = "update")]
     Put {
         id: u32,
         #[arg(long)]
@@ -157,6 +178,21 @@ pub enum Commands {
         /// Include node descriptions in output
         #[arg(long)]
         with_descriptions: bool,
+    },
+
+    /// Show all node types in use with statistics and frequency
+    #[command(alias = "types")]
+    Type {
+        /// Show details for a specific type (e.g., AE, WF, DR)
+        #[arg(long)]
+        of: Option<String>,
+    },
+
+    /// Show incoming and outgoing references for a node in one view
+    #[command(alias = "rel")]
+    Relationships {
+        /// Node ID to show relationships for
+        id: u32,
     },
 
     /// Show graph neighborhood for a node (DOT format for Graphviz)
@@ -503,7 +539,7 @@ fn extract_refs_from_str(s: &str, skip_self: Option<u32>) -> Vec<Reference> {
                     if after.starts_with("](") {
                         // find closing )
                         if let Some(paren_end) = after.find(')') {
-                            let path_start = end + 2; // after ]( 
+                            let path_start = end + 2; // after ](
                             let path_end = end + paren_end;
                             let path = &s[path_start..path_end];
                             refs.push(Reference::External(rid, path.to_string()));
@@ -554,22 +590,85 @@ pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
     }
 }
 
-pub fn cmd_list(mm: &Mindmap, type_filter: Option<&str>, grep: Option<&str>) -> Vec<String> {
+pub fn cmd_list(
+    mm: &Mindmap,
+    type_filter: Option<&str>,
+    grep: Option<&str>,
+    case_sensitive: bool,
+    exact_match: bool,
+    regex_mode: bool,
+) -> Vec<String> {
     let mut res = Vec::new();
+
+    // Compile regex if needed
+    let regex_pattern: Option<regex::Regex> = if regex_mode && let Some(grep) = grep {
+        match regex::Regex::new(grep) {
+            Ok(r) => Some(r),
+            Err(_) => return vec!["Invalid regex pattern".to_string()],
+        }
+    } else {
+        None
+    };
+
     for n in &mm.nodes {
+        // Type filter
         if let Some(tf) = type_filter
             && !n.raw_title.starts_with(&format!("{}:", tf))
         {
             continue;
         }
+
+        // Text filter
         if let Some(q) = grep {
-            let qlc = q.to_lowercase();
-            if !n.raw_title.to_lowercase().contains(&qlc)
-                && !n.description.to_lowercase().contains(&qlc)
-            {
+            let matches = if let Some(re) = &regex_pattern {
+                // Regex search
+                re.is_match(&n.raw_title) || re.is_match(&n.description)
+            } else if exact_match {
+                // Exact phrase match
+                let query = if case_sensitive {
+                    q.to_string()
+                } else {
+                    q.to_lowercase()
+                };
+                let title = if case_sensitive {
+                    n.raw_title.clone()
+                } else {
+                    n.raw_title.to_lowercase()
+                };
+                let desc = if case_sensitive {
+                    n.description.clone()
+                } else {
+                    n.description.to_lowercase()
+                };
+                title == query
+                    || desc == query
+                    || title.contains(&format!(" {} ", query))
+                    || desc.contains(&format!(" {} ", query))
+            } else {
+                // Substring match
+                let query = if case_sensitive {
+                    q.to_string()
+                } else {
+                    q.to_lowercase()
+                };
+                let title = if case_sensitive {
+                    n.raw_title.clone()
+                } else {
+                    n.raw_title.to_lowercase()
+                };
+                let desc = if case_sensitive {
+                    n.description.clone()
+                } else {
+                    n.description.to_lowercase()
+                };
+                title.contains(&query) || desc.contains(&query)
+            };
+
+            if !matches {
                 continue;
             }
         }
+
         res.push(format!(
             "[{}] **{}** - {}",
             n.id, n.raw_title, n.description
@@ -1114,6 +1213,79 @@ pub fn cmd_graph(mm: &Mindmap, id: u32) -> Result<String> {
     Ok(dot)
 }
 
+pub fn cmd_types(mm: &Mindmap, type_of: Option<&str>) -> Result<Vec<String>> {
+    // Collect all types with their counts
+    let mut type_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut type_examples: std::collections::HashMap<String, Vec<u32>> =
+        std::collections::HashMap::new();
+
+    for n in &mm.nodes {
+        if let Some(colon_pos) = n.raw_title.find(':') {
+            let node_type = n.raw_title[..colon_pos].to_string();
+            *type_counts.entry(node_type.clone()).or_insert(0) += 1;
+            type_examples.entry(node_type).or_default().push(n.id);
+        }
+    }
+
+    let mut results = Vec::new();
+
+    if let Some(specific_type) = type_of {
+        // Show details for specific type
+        if let Some(count) = type_counts.get(specific_type) {
+            results.push(format!("Type '{}': {} nodes", specific_type, count));
+            if let Some(examples) = type_examples.get(specific_type) {
+                results.push(format!(
+                    "  Examples: {}",
+                    examples
+                        .iter()
+                        .take(5)
+                        .map(|id| format!("[{}]", id))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+        } else {
+            results.push(format!("Type '{}' not found in use", specific_type));
+        }
+    } else {
+        // Show summary of all types
+        results.push(format!("Node types in use ({} types):", type_counts.len()));
+        let mut sorted_types: Vec<_> = type_counts.iter().collect();
+        sorted_types.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count descending
+        for (node_type, count) in sorted_types {
+            results.push(format!("  {:<10} ({:>3} nodes)", node_type, count));
+        }
+    }
+
+    Ok(results)
+}
+
+pub fn cmd_relationships(mm: &Mindmap, id: u32) -> Result<(Vec<u32>, Vec<Reference>)> {
+    // Get node
+    mm.get_node(id)
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
+
+    // Get incoming references
+    let mut incoming = Vec::new();
+    for n in &mm.nodes {
+        if n.references
+            .iter()
+            .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
+        {
+            incoming.push(n.id);
+        }
+    }
+
+    // Get outgoing references
+    let outgoing = mm
+        .get_node(id)
+        .map(|n| n.references.clone())
+        .unwrap_or_default();
+
+    Ok((incoming, outgoing))
+}
+
 /// Compute blake3 hash of content (hex encoded)
 fn blake3_hash(content: &[u8]) -> String {
     blake3::hash(content).to_hex().to_string()
@@ -1524,8 +1696,21 @@ pub fn run(cli: Cli) -> Result<()> {
                 return Err(anyhow::anyhow!(format!("Node [{}] not found{}", id, hint)));
             }
         },
-        Commands::List { r#type, grep } => {
-            let items = cmd_list(&mm, r#type.as_deref(), grep.as_deref());
+        Commands::List {
+            r#type,
+            grep,
+            case_sensitive,
+            exact_match,
+            regex_mode,
+        } => {
+            let items = cmd_list(
+                &mm,
+                r#type.as_deref(),
+                grep.as_deref(),
+                case_sensitive,
+                exact_match,
+                regex_mode,
+            );
             let count = items.len();
 
             if matches!(cli.output, OutputFormat::Json) {
@@ -1631,10 +1816,21 @@ pub fn run(cli: Cli) -> Result<()> {
                 return Err(anyhow::anyhow!(format!("Node [{}] not found{}", id, hint)));
             }
         },
-        Commands::Search { query } => {
+        Commands::Search {
+            query,
+            case_sensitive,
+            exact_match,
+            regex_mode,
+        } => {
             // Delegate to cmd_list with grep filter (no type filter)
-            // This eliminates code duplication; search is an alias for list --grep
-            let items = cmd_list(&mm, None, Some(&query));
+            let items = cmd_list(
+                &mm,
+                None,
+                Some(&query),
+                case_sensitive,
+                exact_match,
+                regex_mode,
+            );
             let count = items.len();
 
             if matches!(cli.output, OutputFormat::Json) {
@@ -1897,6 +2093,52 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
+        Commands::Type { of } => {
+            let res = cmd_types(&mm, of.as_deref())?;
+            if matches!(cli.output, OutputFormat::Json) {
+                let obj = serde_json::json!({"command": "type", "filter": of, "results": res});
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                eprintln!("Node types information:");
+                for line in res {
+                    if line.starts_with("  ") {
+                        println!("{}", line);
+                    } else {
+                        eprintln!("{}", line);
+                    }
+                }
+            }
+        }
+        Commands::Relationships { id } => {
+            let (incoming, outgoing) = cmd_relationships(&mm, id)?;
+            if matches!(cli.output, OutputFormat::Json) {
+                let obj = serde_json::json!({
+                    "command": "relationships",
+                    "node": id,
+                    "incoming": incoming,
+                    "outgoing": outgoing,
+                    "incoming_count": incoming.len(),
+                    "outgoing_count": outgoing.len(),
+                });
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                eprintln!("Relationships for [{}]:", id);
+                eprintln!("← Incoming ({} nodes):", incoming.len());
+                for incoming_id in &incoming {
+                    if let Some(node) = mm.get_node(*incoming_id) {
+                        eprintln!("  [{}] **{}**", incoming_id, node.raw_title);
+                    }
+                }
+                eprintln!("→ Outgoing ({} nodes):", outgoing.len());
+                for outgoing_ref in &outgoing {
+                    if let Reference::Internal(outgoing_id) = outgoing_ref
+                        && let Some(node) = mm.get_node(*outgoing_id)
+                    {
+                        println!("  [{}] **{}**", outgoing_id, node.raw_title);
+                    }
+                }
+            }
+        }
         Commands::Graph { id } => {
             let dot = cmd_graph(&mm, id)?;
             println!("{}", dot);
@@ -1932,7 +2174,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 None
             };
 
-            let items = cmd_list(&mm, None, None);
+            let items = cmd_list(&mm, None, None, false, false, false);
 
             if matches!(cli.output, OutputFormat::Json) {
                 let arr: Vec<_> = items
@@ -2398,7 +2640,7 @@ mod tests {
         file.write_str("[1] **AE: One** - first\n[2] **AE: Two** - second\n")?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
         // Search now delegates to list --grep
-        let results = cmd_list(&mm, None, Some("first"));
+        let results = cmd_list(&mm, None, Some("first"), false, false, false);
         assert_eq!(results.len(), 1);
         assert!(results[0].contains("[1] **AE: One**"));
         temp.close()?;
@@ -2414,8 +2656,8 @@ mod tests {
         let mm = Mindmap::load(file.path().to_path_buf())?;
 
         // Both should produce the same output
-        let search_results = cmd_list(&mm, None, Some("node"));
-        let list_grep_results = cmd_list(&mm, None, Some("node"));
+        let search_results = cmd_list(&mm, None, Some("node"), false, false, false);
+        let list_grep_results = cmd_list(&mm, None, Some("node"), false, false, false);
         assert_eq!(search_results, list_grep_results);
         assert_eq!(search_results.len(), 2);
 

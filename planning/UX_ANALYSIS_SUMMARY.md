@@ -104,6 +104,9 @@ Implement in ~15-20 hours for broader improvements:
    - `incoming` → `refs`
    - `outgoing` → `links`
    - `inspect` → `show`
+   - `get` → `show`
+   - `update` → `put`
+   - `query` → `search`
 
 ---
 
@@ -113,7 +116,7 @@ High-effort features for future consideration:
 
 - File locking (concurrency safety)
 - Undo/rollback support
-- Recursive navigation (`--follow`)
+- Recursive navigation (`--follow`) [more notes on this](./multiple-files.md)
 - Backup functionality
 - Performance optimizations
 
@@ -122,13 +125,13 @@ High-effort features for future consideration:
 ## Implementation Checklist
 
 ### Phase 1: Quick Wins
-- [ ] Add empty result messages
-- [ ] Clarify refs vs links in help
-- [ ] Add result counts and headers
-- [ ] Improve error messages with hints
-- [ ] Add --with-descriptions flag for orphans
-- [ ] Create README quick reference
-- [ ] Update help text across commands
+- [x] Add empty result messages
+- [x] Clarify refs vs links in help
+- [x] Add result counts and headers
+- [x] Improve error messages with hints
+- [x] Add --with-descriptions flag for orphans
+- [x] Create README quick reference
+- [x] Update help text across commands
 
 ### Phase 2: New Features
 - [ ] Implement `types` command
