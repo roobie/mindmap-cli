@@ -465,3 +465,109 @@ fn integration_cli_stdin() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn integration_cli_follow_flag() -> Result<(), Box<dyn std::error::Error>> {
+    // Create a temporary directory with multiple files
+    let temp = assert_fs::TempDir::new()?;
+    
+    // Create main mindmap file
+    let main = temp.child("MAIN.md");
+    main.write_str(
+        "[1] **Main Node** - This references [10](./external.md)\n\
+         [2] **Local Node** - References [1] and [11](./external.md)\n\
+         [3] **Another Local** - References [1][2]\n",
+    )?;
+
+    // Create external mindmap file
+    let external = temp.child("external.md");
+    external.write_str(
+        "[10] **External Concept** - Referenced from main\n\
+         [11] **Another External** - Also referenced\n\
+         [12] **External Reference** - Links back [1]\n",
+    )?;
+
+    // Test show with --follow (should include external refs in stderr output)
+    let mut cmd = mindmap_cmd();
+    cmd.arg("show")
+        .arg("1")
+        .arg("--file")
+        .arg(main.path())
+        .arg("--follow");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Main Node"))
+        .stderr(predicate::str::contains("recursive"));
+
+    // Test show without --follow (should not include "recursive")
+    let mut cmd = mindmap_cmd();
+    cmd.arg("show")
+        .arg("1")
+        .arg("--file")
+        .arg(main.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Main Node"));
+
+    // Test refs with --follow
+    let mut cmd = mindmap_cmd();
+    cmd.arg("refs")
+        .arg("1")
+        .arg("--file")
+        .arg(main.path())
+        .arg("--follow");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Local"));
+
+    // Test links with --follow
+    let mut cmd = mindmap_cmd();
+    cmd.arg("links")
+        .arg("1")
+        .arg("--file")
+        .arg(main.path())
+        .arg("--follow");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("External"));
+
+    // Test relationships with --follow
+    let mut cmd = mindmap_cmd();
+    cmd.arg("relationships")
+        .arg("1")
+        .arg("--file")
+        .arg(main.path())
+        .arg("--follow");
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("recursive"));
+
+    // Test JSON output with --follow
+    let mut cmd = mindmap_cmd();
+    cmd.arg("show")
+        .arg("1")
+        .arg("--file")
+        .arg(main.path())
+        .arg("--follow")
+        .arg("--output")
+        .arg("json");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"follow\": true"))
+        .stdout(predicate::str::contains("\"outgoing\""));
+
+    // Test JSON output without --follow
+    let mut cmd = mindmap_cmd();
+    cmd.arg("show")
+        .arg("1")
+        .arg("--file")
+        .arg(main.path())
+        .arg("--output")
+        .arg("json");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("\"follow\": false"));
+
+    temp.close()?;
+    Ok(())
+}
