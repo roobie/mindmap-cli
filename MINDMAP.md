@@ -89,3 +89,5 @@
 [41] **WF: Batch atomic operations** - Use 'mindmap-cli batch' to apply multiple operations atomically. Supports --format lines (CLI-style) or json, --dry-run preview, and --fix auto-correction. Includes blake3 hash concurrency guard to detect and reject commits if file changed mid-batch.
 
 [42] **DONE: Consolidate search and list --grep** - Consolidated: cmd_search() removed; search now delegates to cmd_list(mm, None, Some(query)). Eliminated ~13 lines of code duplication. Both commands produce identical output. Help text updated. All 43 tests pass. See [15] for details.
+
+[43] **TODO: UX Improvements: Results clarity, discoverability, navigation** - Identified 15+ UX improvements in comprehensive analysis. Quick wins: empty result messages (1h), refs/links clarity (1h), orphans descriptions (2h), types command (4h). See planning/UX_ANALYSIS.md for full roadmap. High-impact improvements: ~11 hours work for Quick Wins phase [15]
