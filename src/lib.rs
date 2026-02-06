@@ -1074,10 +1074,7 @@ pub fn cmd_delete(mm: &mut Mindmap, id: u32, force: bool) -> Result<()> {
 
 /// Validate external file references
 /// Returns list of validation issues found
-fn validate_external_references(
-    mm: &Mindmap,
-    workspace: &std::path::Path,
-) -> Vec<String> {
+fn validate_external_references(mm: &Mindmap, workspace: &std::path::Path) -> Vec<String> {
     let mut issues = Vec::new();
     let mut cache = crate::cache::MindmapCache::new(workspace.to_path_buf());
 
@@ -1097,7 +1094,8 @@ fn validate_external_references(
                 };
 
                 // 2. Try to load the file
-                let ext_mm = match cache.load(&mm.path, ref_path, &std::collections::HashSet::new()) {
+                let ext_mm = match cache.load(&mm.path, ref_path, &std::collections::HashSet::new())
+                {
                     Ok(m) => m,
                     Err(e) => {
                         issues.push(format!(
@@ -1112,7 +1110,9 @@ fn validate_external_references(
                 if !ext_mm.by_id.contains_key(ref_id) {
                     issues.push(format!(
                         "Invalid node: node [{}] references non-existent [{}] in {}",
-                        node.id, ref_id, canonical_path.display()
+                        node.id,
+                        ref_id,
+                        canonical_path.display()
                     ));
                 }
             }
@@ -1178,7 +1178,10 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     }
 
     // 4) External file validation (detailed checks)
-    let workspace = mm.path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let workspace = mm
+        .path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let external_issues = validate_external_references(mm, workspace);
     warnings.extend(external_issues);
 
@@ -1701,13 +1704,13 @@ fn resolve_reference(
             }
 
             let _guard = _ctx.descend()?;
-            
+
             // Resolve path first (before borrowing cache)
             let canonical = match cache.resolve_path(current_file, path) {
                 Ok(p) => p,
                 Err(_) => return Ok(None),
             };
-            
+
             // Then load from cache
             match cache.load(current_file, path, visited) {
                 Ok(ext_mm) => {
@@ -2084,7 +2087,10 @@ pub fn run(cli: Cli) -> Result<()> {
                     for (ref_id, ref_path, ref_node) in inbound {
                         println!(
                             "[{}] **{}** - {} ({})",
-                            ref_id, ref_node.raw_title, ref_node.description, ref_path.display()
+                            ref_id,
+                            ref_node.raw_title,
+                            ref_node.description,
+                            ref_path.display()
                         );
                     }
                 }
@@ -2182,7 +2188,10 @@ pub fn run(cli: Cli) -> Result<()> {
                     for (ref_id, ref_path, ref_node) in outbound {
                         println!(
                             "[{}] **{}** - {} ({})",
-                            ref_id, ref_node.raw_title, ref_node.description, ref_path.display()
+                            ref_id,
+                            ref_node.raw_title,
+                            ref_node.description,
+                            ref_path.display()
                         );
                     }
                 }
@@ -2229,14 +2238,11 @@ pub fn run(cli: Cli) -> Result<()> {
                         } else {
                             " No nodes exist.".to_string()
                         };
-                        return Err(anyhow::anyhow!(format!(
-                            "Node [{}] not found{}",
-                            id, hint
-                        )));
+                        return Err(anyhow::anyhow!(format!("Node [{}] not found{}", id, hint)));
                     }
                 }
             }
-        },
+        }
         Commands::Search {
             query,
             case_sensitive,
@@ -2285,7 +2291,7 @@ pub fn run(cli: Cli) -> Result<()> {
                             // Try to load external file
                             if let Ok(ext_mm) = cache.load(&path, ref_path, &visited_files) {
                                 let ext_items = cmd_list(
-                                    &ext_mm,
+                                    ext_mm,
                                     None,
                                     Some(&query),
                                     case_sensitive,
@@ -2294,7 +2300,11 @@ pub fn run(cli: Cli) -> Result<()> {
                                 );
                                 for item in ext_items {
                                     // Append file path to item
-                                    all_items.push(format!("{} ({})", item, canonical_path.display()));
+                                    all_items.push(format!(
+                                        "{} ({})",
+                                        item,
+                                        canonical_path.display()
+                                    ));
                                 }
                             }
                         }

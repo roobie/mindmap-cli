@@ -470,7 +470,7 @@ fn integration_cli_stdin() -> Result<(), Box<dyn std::error::Error>> {
 fn integration_cli_follow_flag() -> Result<(), Box<dyn std::error::Error>> {
     // Create a temporary directory with multiple files
     let temp = assert_fs::TempDir::new()?;
-    
+
     // Create main mindmap file
     let main = temp.child("MAIN.md");
     main.write_str(
@@ -501,10 +501,7 @@ fn integration_cli_follow_flag() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test show without --follow (should not include "recursive")
     let mut cmd = mindmap_cmd();
-    cmd.arg("show")
-        .arg("1")
-        .arg("--file")
-        .arg(main.path());
+    cmd.arg("show").arg("1").arg("--file").arg(main.path());
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Main Node"));
@@ -575,7 +572,7 @@ fn integration_cli_follow_flag() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn integration_cli_recursive_search() -> Result<(), Box<dyn std::error::Error>> {
     let temp = assert_fs::TempDir::new()?;
-    
+
     let main = temp.child("MAIN.md");
     main.write_str(
         "[1] **Main Search** - This is searchable\n\
@@ -583,9 +580,7 @@ fn integration_cli_recursive_search() -> Result<(), Box<dyn std::error::Error>> 
     )?;
 
     let external = temp.child("external.md");
-    external.write_str(
-        "[10] **External Search** - Also searchable\n",
-    )?;
+    external.write_str("[10] **External Search** - Also searchable\n")?;
 
     // Test search without --follow
     let mut cmd = mindmap_cmd();
