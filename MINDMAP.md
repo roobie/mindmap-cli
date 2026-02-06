@@ -14,7 +14,7 @@
 
 [6] **META: Update Protocol** - **MANDATORY:** (1) Before work, grep for related nodes and read them [4], (2) After changes, update affected nodes immediately, (3) Add new nodes if concept is referenced 3+ times OR non-obvious from code, (4) For bugs create `**BUG:**` node with root cause + solution [3][7].
 
-[7] **META: Node Lifecycle Example** - Initial: `[15] **AE: LLM Client** - Uses OpenAI SDK [20][25]`. After change: `[15] **AE: LLM Client** - Uses OpenAI SDK, supports local models [20][25][27] (updated 2026-02-02)` [6][3].
+[7] **META: Node Lifecycle Example** - use `mindmap-cli add/put/patch/delete` to interact with the MINDMAP [6][3].
 
 [8] **META: Reality vs Mindmap** - **Critical:** If MINDMAP contradicts code, code is truth—update MINDMAP immediately [6]. This MINDMAP is an index, not a spec. Stale nodes are worse than missing nodes.
 
@@ -34,51 +34,9 @@
 
 [10] **Project purpose** - Provide a robust and useful CLI interface for interacting with MINDMAP files (just like this one.) - See design document at [DESIGN](./DESIGN.md). Make sure to keep both this MINDMAP and the DESIGN document updated as implementation goes along.
 
-[15] **AE: mindmap-cli** - v0 implementation complete: 20 commands total (show,list,search,refs,links,add,deprecate,verify,lint,edit,put,patch,delete,graph,orphans,type,relationships,batch,prime,lint). Phase 1 UX improvements: empty result messages, refs/links clarity with directional indicators, result counts, contextual error messages, orphans descriptions, README quick reference, enhanced help text. Phase 2 features: types command with statistics, relationships command (incoming+outgoing), search flags (--case-sensitive/--exact-match/--regex-mode), command aliases (get/update/query/etc), JSON schema enhancements. Phase 3.1: MindmapCache + NavigationContext for recursive navigation. All 60 tests passing (56 unit + 4 integration). See [43][44][45][46][47][48][49][50][51][52] for details (updated 2026-02-06)
-
-[16] **DONE: v0 phases** - All phases complete: Phase1 parser (manual, no regex), Phase2 commands (18 subcommands), Phase3 navigation (refs/links/graph), Phase4 edit (via $EDITOR), Phase5 lint (with --fix), Phase6 batch (atomic, blake3 guard), Phase7 tests (38 unit + 4 integration), Phase8 docs updated (2026-02-05)
-
-[20] **DOC: CLI help** - Added high-level description and core usage examples to CLI help output (mindmap-cli --help / help) (updated 2026-02-03)
-
-[17] **DONE: CHECKLIST.md** - Created CHECKLIST.md with actionable implementation checklist for v0 (2026-02-03)
-
-[18] **AE: mindmap-cli default** - Default mindmap file changed to MINDMAP.md (removed .core) (updated 2026-02-03)
-
-[19] **DONE: Lint & Validation** - Implemented syntax checks, duplicate ID detection, missing-ref warnings and orphan detection; added unit and integration tests for lint; lint --fix auto-fixes spacing and duplicated type prefixes (updated 2026-02-04)
-
-[21] **DR: Default filename = MINDMAP.md** - Default mindmap filename is ./MINDMAP.md; CLI and tests rely on this default; override with --file if needed.
-
-[22] **DR: Node format regex** - Nodes must follow ^\[(\d+)\] \*\*(.+?)\*\* - (.*)$ (one-node-per-line). Parsers, edit, and lint depend on this exact format.
-
-[23] **DR: ID immutability** - Node numeric IDs are immutable; edits/put/patch must preserve the bracketed id. Tests enforce reject on id change.
-
-[24] **DR: Atomic save strategy** - Writes are atomic: write to temp file in same dir and persist/rename to replace original to avoid partial writes.
-
-[25] **DR: Editor single-line validation** - Edit flow provides a single-line temp file; editor must produce exactly one valid node line or the edit is aborted to prevent file corruption.
-
-[26] **DR: PUT and PATCH semantics** - PUT = full-line replace (id must match); PATCH = partial update of type/title/desc; --strict fails on missing refs.
-
-[27] **DR: Output formats & JSON** - CLI supports --output json to emit structured data on stdout; informational messages and warnings go to stderr to keep stdout machine-actionable.
-
-[28] **DR: Delete semantics** - Delete blocks by default when referenced; use --force to delete and leave dangling refs (lint will report). No automatic cleanup by default.
-
-[29] **DONE: Read stdin** - Implemented support for reading MINDMAP content from stdin via `--file -` for read-only commands; mutating operations are disallowed when source is '-' (use `--file <path>` to persist changes) (updated 2026-02-04)
-
-[30] **DONE: Add from $EDITOR** - `add` editor flow implemented: calling `mindmap-cli add` with no args opens $EDITOR to author a single validated node line which is appended to MINDMAP.md (updated 2026-02-04)
+[15] **AE: mindmap-cli** - v0 implementation complete: 20 commands total (show,list,search,refs,links,add,deprecate,verify,lint,edit,put,patch,delete,graph,orphans,type,relationships,batch,prime,lint). Phase 1 UX improvements: empty result messages, refs/links clarity with directional indicators, result counts, contextual error messages, orphans descriptions, README quick reference, enhanced help text. Phase 2 features: types command with statistics, relationships command (incoming+outgoing), search flags (--case-sensitive/--exact-match/--regex-mode), command aliases (get/update/query/etc), JSON schema enhancements. Phase 3.1: MindmapCache + NavigationContext for recursive navigation. Parser: manual (no regex), benchmarks (~200ns/node). CLI refactor to lib.rs, 18+ unit tests. All 60 tests passing (56 unit + 4 integration). DOC: CLI help added to help output. Types cmd discovers node types with stats. Relationships shows bidirectional refs. Search flags for advanced matching. Command aliases for discoverability. See PHASE1_IMPLEMENTATION.md, PHASE2_IMPLEMENTATION.md, [planning/UX_ANALYSIS.md](./planning/UX_ANALYSIS.md), [DESIGN.md](./DESIGN.md)
 
 [31] **WF: Protocol for interacting with MINDMAP** - See [PROTOCOL_MINDMAP.md](./PROTOCOL_MINDMAP.md) for the formal protocol describing how to interact with MINDMAP.md (add/edit/lint/orphans flows).
-
-[32] **AE: Manual parser for node lines** - Replaced regex captures with manual parser to avoid repeated compilation and allocations; tests updated (refactor 2026-02-04)
-
-[33] **AE: Parser consolidation** - Removed NODE_RE; cmd_edit uses manual parser as well to avoid any regex usage in hot paths (refactor 2026-02-04)
-
-[34] **AE: CLI refactor to lib.rs and unit tests** - Moved Cli/Commands structs and command logic to lib.rs via run() function; simplified main.rs; added 18+ unit tests for cmd_* functions and error cases; test coverage improved to 50% (from ~31%) using tarpaulin
-
-[35] **PERF: Manual parser benchmarks** - Added criterion benchmarks: parse_node_line (~200ns), mindmap_from_string (~8µs for 3 nodes); quantifies performance of regex-free manual parser
-
-[36] **DONE: Graph subcommand** - Implemented 'mindmap graph <id>' to output 1-hop neighborhood in DOT format for Graphviz; can pipe to 'dot -Tpng > graph.png'
-
-[37] **DONE: External reference syntax** - Parser now supports [id](./file.md) markdown links for cross-file references; Reference enum extended with External variant; groundwork for multi-file mindmaps [9]
 
 [38] **WF: Git commit messages** - Require good but terse commit messages: short summary (<=72 chars) and optional body; reference ticket IDs; keep commits atomic.
 
@@ -88,24 +46,18 @@
 
 [41] **WF: Batch atomic operations** - Use 'mindmap-cli batch' to apply multiple operations atomically. Supports --format lines (CLI-style) or json, --dry-run preview, and --fix auto-correction. Includes blake3 hash concurrency guard to detect and reject commits if file changed mid-batch.
 
-[42] **DONE: Consolidate search and list --grep** - Consolidated: cmd_search() removed; search now delegates to cmd_list(mm, None, Some(query)). Eliminated ~13 lines of code duplication. Both commands produce identical output. Help text updated. All 43 tests pass. See [15] for details.
-
 [43] **DONE: Phase 1 UX Improvements - Results clarity, discoverability, navigation** - Completed all 7 Phase 1 quick wins: empty result messages (1h), refs/links clarity with aliases (1h), result counts & headers (1h), better error messages with context hints (2h), orphans --with-descriptions flag (2h), README quick reference table (1h), improved help text across commands (2h). All 43 tests passing. See PHASE1_IMPLEMENTATION.md and planning/UX_ANALYSIS.md for details. Result: 40% UX improvement achieved [15][44]
 
 [44] **DOC: Phase 1 Implementation Summary** - Comprehensive record of Phase 1 UX improvements implementation: 7 quick wins delivered, 0 breaking changes, 43 tests passing, 40% UX improvement achieved. Documents changes to List/Refs/Links/Search/Show/Orphans/Lint commands, error message enhancements, help text improvements, README additions. See PHASE1_IMPLEMENTATION.md for full details [43]
-
-[45] **DONE: Phase 2 Medium-Priority Additions** - Implemented all 5 Phase 2 features: types command with statistics (4h), relationships command showing incoming+outgoing (2h), search flags --case-sensitive/--exact-match/--regex (3h), JSON schema enhancements (4h), command aliases get/update/query (2h). Total: 15 hours planned, ~8 hours actual. All tests passing. See [15][46][47][48][49] for details
-
-[46] **DOC: Types Command - Node Type Discovery** - New 'types' command discovers all node types in use with frequency statistics. Usage: mindmap-cli type (summary) or mindmap-cli type --of AE (details for specific type). Shows type distribution across the mindmap for insights. Useful for discoverability and understanding knowledge graph structure
-
-[47] **DOC: Relationships Command - Bidirectional References** - New 'relationships' command shows both incoming (←) and outgoing (→) references for a node in one view. Usage: mindmap-cli relationships <id>. Eliminates need to run refs + links separately. Improves navigation efficiency for exploring connected nodes
-
-[48] **DOC: Search Flags - Advanced Search Capabilities** - Added three search flags to both 'list' and 'search' commands: --case-sensitive (exact case matching), --exact-match (full phrase match), --regex-mode (regex patterns). Usage: mindmap-cli search "pattern" --regex-mode or mindmap-cli list --grep auth --case-sensitive. Serve power users with advanced search options while maintaining backward compatibility with defaults
-
-[49] **DOC: Command Aliases - Improved Discoverability** - Added command aliases for better discoverability: 'get' and 'inspect' for show, 'update' for put, 'query' for search, 'incoming' for refs, 'outgoing' for links, 'rel' for relationships, 'types' for type. Helps users discover related commands and reduces cognitive load for command naming
 
 [50] **DONE: Phase 3.1: Core Data Structures - MindmapCache & NavigationContext** - Implemented secure file loading and caching for recursive navigation. Created MindmapCache with path resolution, file size checks, cycle detection. Created NavigationContext with depth tracking and RAII guards. Added 17 new unit tests, all passing. Aligns with Node [14] Security priority. See PHASE3_IMPLEMENTATION.md [50]
 
 [51] **AE: MindmapCache** - Secure file loading and caching. Provides lazy loading, path resolution with security validation (prevents directory traversal), file size checks (max 10MB default), cycle detection integration. 8 unit tests. Location: src/cache.rs [50]
 
 [52] **AE: NavigationContext** - Depth tracking and cycle detection for recursive operations. Recursion depth counter with configurable limits (default 50), visited file set, RAII guard pattern for auto-decrement. 9 unit tests. Location: src/context.rs [50]
+
+[53] **DONE: Implementation Milestones** - v0 phases complete: Phase1 parser (manual, no regex), Phase2 commands (18 subcommands), Phase3 navigation (refs/links/graph), Phase4 edit (via $EDITOR), Phase5 lint (with --fix), Phase6 batch (atomic, blake3 guard), Phase7 tests (38 unit + 4 integration), Phase8 docs updated. Phase 1 UX: empty result messages, refs/links clarity, result counts, contextual errors, orphans descriptions, README quick reference, enhanced help. Phase 2: types cmd, relationships, search flags, JSON enhancements, aliases. See PHASE1_IMPLEMENTATION.md, PHASE2_IMPLEMENTATION.md, [planning/UX_ANALYSIS.md](./planning/UX_ANALYSIS.md), [planning/UX_ANALYSIS_SUMMARY.md](./planning/UX_ANALYSIS_SUMMARY.md), [planning/SUMMARY.md](./planning/SUMMARY.md)
+
+[54] **DR: Core File & Node Semantics** - Default filename = MINDMAP.md; node format regex; ID immutability; atomic save strategy; editor single-line validation. See [DESIGN.md](./DESIGN.md), [planning/implementation-multi-id.md](./planning/implementation-multi-id.md)
+
+[55] **DR: Command Semantics** - PUT and PATCH ops; output formats & JSON; delete semantics (blocks by default). See [DESIGN.md](./DESIGN.md)
