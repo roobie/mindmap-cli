@@ -119,6 +119,9 @@ pub enum Commands {
         /// Use regex pattern instead of plain text
         #[arg(long)]
         regex_mode: bool,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
     },
 
     /// Add a new node
@@ -2183,41 +2186,141 @@ pub fn run(cli: Cli) -> Result<()> {
             case_sensitive,
             exact_match,
             regex_mode,
+            follow,
         } => {
-            // Delegate to cmd_list with grep filter (no type filter)
-            let items = cmd_list(
-                &mm,
-                None,
-                Some(&query),
-                case_sensitive,
-                exact_match,
-                regex_mode,
-            );
-            let count = items.len();
+            if follow {
+                // Recursive mode: search across referenced files
+                let workspace = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+                let mut cache = crate::cache::MindmapCache::new(workspace.to_path_buf());
+                let _ctx = crate::context::NavigationContext::new();
+                let mut visited_files = std::collections::HashSet::new();
+                visited_files.insert(path.clone());
 
-            if matches!(cli.output, OutputFormat::Json) {
-                let arr: Vec<_> = items
-                    .into_iter()
-                    .map(|line| serde_json::json!({"line": line}))
-                    .collect();
-                let obj = serde_json::json!({"command": "search", "query": query, "count": count, "items": arr});
-                println!("{}", serde_json::to_string_pretty(&obj)?);
-            } else {
-                if count == 0 {
-                    eprintln!("No matches for '{}' (0 results)", query);
-                } else {
-                    eprintln!(
-                        "Search results for '{}' ({} result{})",
-                        query,
-                        count,
-                        if count == 1 { "" } else { "s" }
-                    );
+                // Search main file
+                let mut all_items = cmd_list(
+                    &mm,
+                    None,
+                    Some(&query),
+                    case_sensitive,
+                    exact_match,
+                    regex_mode,
+                );
+
+                // Track processed files to avoid duplicates
+                let mut processed_files = std::collections::HashSet::new();
+                processed_files.insert(path.clone());
+
+                // Search referenced files
+                for node in &mm.nodes {
+                    for ref_item in &node.references {
+                        if let Reference::External(_id, ref_path) = ref_item {
+                            // Try to get canonical path
+                            let canonical_path = match cache.resolve_path(&path, ref_path) {
+                                Ok(p) => p,
+                                Err(_) => continue,
+                            };
+
+                            // Skip if already processed
+                            if processed_files.contains(&canonical_path) {
+                                continue;
+                            }
+                            processed_files.insert(canonical_path.clone());
+
+                            // Try to load external file
+                            if let Ok(ext_mm) = cache.load(&path, ref_path, &visited_files) {
+                                let ext_items = cmd_list(
+                                    &ext_mm,
+                                    None,
+                                    Some(&query),
+                                    case_sensitive,
+                                    exact_match,
+                                    regex_mode,
+                                );
+                                for item in ext_items {
+                                    // Append file path to item
+                                    all_items.push(format!("{} ({})", item, canonical_path.display()));
+                                }
+                            }
+                        }
+                    }
                 }
-                if let Some(p) = &printer {
-                    p.list(&items)?;
+
+                let count = all_items.len();
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let arr: Vec<_> = all_items
+                        .into_iter()
+                        .map(|line| serde_json::json!({"line": line}))
+                        .collect();
+                    let obj = serde_json::json!({
+                        "command": "search",
+                        "query": query,
+                        "follow": true,
+                        "count": count,
+                        "items": arr
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
                 } else {
-                    for it in items {
-                        println!("{}", it);
+                    if count == 0 {
+                        eprintln!("No matches for '{}' (0 results)", query);
+                    } else {
+                        eprintln!(
+                            "Search results for '{}' (recursive, {} result{})",
+                            query,
+                            count,
+                            if count == 1 { "" } else { "s" }
+                        );
+                    }
+                    if let Some(p) = &printer {
+                        p.list(&all_items)?;
+                    } else {
+                        for it in all_items {
+                            println!("{}", it);
+                        }
+                    }
+                }
+            } else {
+                // Single-file mode: original behavior
+                let items = cmd_list(
+                    &mm,
+                    None,
+                    Some(&query),
+                    case_sensitive,
+                    exact_match,
+                    regex_mode,
+                );
+                let count = items.len();
+
+                if matches!(cli.output, OutputFormat::Json) {
+                    let arr: Vec<_> = items
+                        .into_iter()
+                        .map(|line| serde_json::json!({"line": line}))
+                        .collect();
+                    let obj = serde_json::json!({
+                        "command": "search",
+                        "query": query,
+                        "follow": false,
+                        "count": count,
+                        "items": arr
+                    });
+                    println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else {
+                    if count == 0 {
+                        eprintln!("No matches for '{}' (0 results)", query);
+                    } else {
+                        eprintln!(
+                            "Search results for '{}' ({} result{})",
+                            query,
+                            count,
+                            if count == 1 { "" } else { "s" }
+                        );
+                    }
+                    if let Some(p) = &printer {
+                        p.list(&items)?;
+                    } else {
+                        for it in items {
+                            println!("{}", it);
+                        }
                     }
                 }
             }
