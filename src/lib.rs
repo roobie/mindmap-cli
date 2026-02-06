@@ -1072,6 +1072,56 @@ pub fn cmd_delete(mm: &mut Mindmap, id: u32, force: bool) -> Result<()> {
     Ok(())
 }
 
+/// Validate external file references
+/// Returns list of validation issues found
+fn validate_external_references(
+    mm: &Mindmap,
+    workspace: &std::path::Path,
+) -> Vec<String> {
+    let mut issues = Vec::new();
+    let mut cache = crate::cache::MindmapCache::new(workspace.to_path_buf());
+
+    for node in &mm.nodes {
+        for reference in &node.references {
+            if let Reference::External(ref_id, ref_path) = reference {
+                // 1. Check if file exists
+                let canonical_path = match cache.resolve_path(&mm.path, ref_path) {
+                    Ok(p) => p,
+                    Err(_) => {
+                        issues.push(format!(
+                            "Missing file: node [{}] references missing file {}",
+                            node.id, ref_path
+                        ));
+                        continue;
+                    }
+                };
+
+                // 2. Try to load the file
+                let ext_mm = match cache.load(&mm.path, ref_path, &std::collections::HashSet::new()) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        issues.push(format!(
+                            "Unreadable file: node [{}] cannot read {}: {}",
+                            node.id, ref_path, e
+                        ));
+                        continue;
+                    }
+                };
+
+                // 3. Check if the referenced node exists in external file
+                if !ext_mm.by_id.contains_key(ref_id) {
+                    issues.push(format!(
+                        "Invalid node: node [{}] references non-existent [{}] in {}",
+                        node.id, ref_id, canonical_path.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    issues
+}
+
 pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     let mut warnings = Vec::new();
 
@@ -1115,6 +1165,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
                     }
                 }
                 Reference::External(eid, file) => {
+                    // Basic check (file exists)
                     if !std::path::Path::new(file).exists() {
                         warnings.push(format!(
                             "Missing file: node {} references {} in missing file {}",
@@ -1125,6 +1176,11 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
             }
         }
     }
+
+    // 4) External file validation (detailed checks)
+    let workspace = mm.path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let external_issues = validate_external_references(mm, workspace);
+    warnings.extend(external_issues);
 
     if warnings.is_empty() {
         Ok(vec!["Lint OK".to_string()])
