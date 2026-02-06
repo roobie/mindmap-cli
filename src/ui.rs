@@ -39,7 +39,7 @@ impl Printer for PrettyPrinter {
 
         // Incoming references in blue
         if !inbound.is_empty() {
-            Console::new("Incoming:").blue().print();
+            Console::new("← Referring nodes:").blue().print();
             Console::new(format!(" {:?}", inbound)).blue().println();
         }
 
@@ -51,7 +51,7 @@ impl Printer for PrettyPrinter {
             }
         }
         if !outbound_ids.is_empty() {
-            Console::new("Outgoing:").magenta().print();
+            Console::new("→ References:").magenta().print();
             Console::new(format!(" {:?}", outbound_ids))
                 .magenta()
                 .println();
@@ -86,21 +86,18 @@ impl Printer for PrettyPrinter {
             }
         }
         if !internal.is_empty() {
-            Console::new(format!("Node [{}] references: {:?}", id, internal)).println();
+            Console::new(format!("→ [{}] refers to: {:?}", id, internal)).println();
         }
         if !external.is_empty() {
-            Console::new(format!("Node [{}] external refs: {:?}", id, external)).println();
+            Console::new(format!("[{}] external refs: {:?}", id, external)).println();
         }
         Ok(())
     }
 
     fn orphans(&self, orphans: &[String]) -> Result<()> {
         // Orphans are data for the orphans command — print to stdout
-        if orphans.is_empty() {
-            Console::new("No orphans").green().println();
-        } else {
-            Console::new("Orphans:").yellow().bold().println();
-            for o in orphans {
+        for o in orphans {
+            if o != "No orphans" {
                 Console::new(format!("[{}]", o)).println();
             }
         }
@@ -126,7 +123,7 @@ impl Printer for PlainPrinter {
         println!("[{}] {}", node.id, node.raw_title);
         println!("{}", node.description);
         if !inbound.is_empty() {
-            println!("Incoming: {:?}", inbound);
+            println!("← Referring nodes: {:?}", inbound);
         }
         let mut outbound_ids = Vec::new();
         for r in outbound {
@@ -135,7 +132,7 @@ impl Printer for PlainPrinter {
             }
         }
         if !outbound_ids.is_empty() {
-            println!("Outgoing: {:?}", outbound_ids);
+            println!("→ References: {:?}", outbound_ids);
         }
         Ok(())
     }
@@ -166,20 +163,17 @@ impl Printer for PlainPrinter {
             }
         }
         if !internal.is_empty() {
-            println!("Node [{}] references: {:?}", id, internal);
+            println!("→ [{}] refers to: {:?}", id, internal);
         }
         if !external.is_empty() {
-            println!("Node [{}] external refs: {:?}", id, external);
+            println!("[{}] external refs: {:?}", id, external);
         }
         Ok(())
     }
 
     fn orphans(&self, orphans: &[String]) -> Result<()> {
-        if orphans.is_empty() {
-            println!("No orphans");
-        } else {
-            println!("Orphans:");
-            for o in orphans {
+        for o in orphans {
+            if o != "No orphans" {
                 println!("{}", o);
             }
         }

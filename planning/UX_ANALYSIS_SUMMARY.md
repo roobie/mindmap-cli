@@ -41,6 +41,8 @@
 
 Implement in ~11 hours for immediate UX improvement:
 
+**NOTE** follow UNIX philosophy: data goes to stdout, whereas informational and error messages go to stderr
+
 1. **Empty Result Messages** (1h)
    - Output "No matching nodes found" instead of silence
    - User clarity: "Did it work?"
@@ -57,6 +59,7 @@ Implement in ~11 hours for immediate UX improvement:
    - Add contextual hints: "Use `mindmap-cli list` to see all nodes"
    - Show valid ID range when node not found
    - Suggest recovery commands
+   - Expand on help texts for each subcommand.
 
 5. **Orphans Descriptions Flag** (2h)
    - `mindmap-cli orphans --with-descriptions`

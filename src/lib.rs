@@ -53,25 +53,42 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Show a node by ID
-    Show { id: u32 },
+    /// Show a node by ID (displays incoming and outgoing references)
+    Show {
+        /// Node ID
+        id: u32,
+    },
 
-    /// List nodes (optionally filtered)
+    /// List nodes (optionally filtered by --type or --grep)
+    #[command(alias = "inspect")]
     List {
+        /// Filter by node type prefix (case-sensitive, e.g., AE, WF, DOC)
         #[arg(long)]
         r#type: Option<String>,
+        /// Filter by substring (case-insensitive, searches title and description)
         #[arg(long)]
         grep: Option<String>,
     },
 
-    /// Show nodes that reference the given ID
-    Refs { id: u32 },
+    /// Show nodes that REFERENCE (← INCOMING) the given ID
+    #[command(alias = "incoming")]
+    Refs {
+        /// Node ID to find incoming references for
+        id: u32,
+    },
 
-    /// Show nodes that the given ID references
-    Links { id: u32 },
+    /// Show nodes that the given ID REFERENCES (→ OUTGOING)
+    #[command(alias = "outgoing")]
+    Links {
+        /// Node ID to find outgoing references from
+        id: u32,
+    },
 
-    /// Search nodes by substring (convenience alias for: list --grep)
-    Search { query: String },
+    /// Search nodes by substring (case-insensitive, alias: mindmap-cli search = mindmap-cli list --grep)
+    Search {
+        /// Search query (searches title and description case-insensitively)
+        query: String,
+    },
 
     /// Add a new node
     Add {
@@ -136,7 +153,11 @@ pub enum Commands {
     },
 
     /// Show orphan nodes (no in & no out, excluding META)
-    Orphans,
+    Orphans {
+        /// Include node descriptions in output
+        #[arg(long)]
+        with_descriptions: bool,
+    },
 
     /// Show graph neighborhood for a node (DOT format for Graphviz)
     Graph { id: u32 },
@@ -529,7 +550,7 @@ pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
         }
         out
     } else {
-        format!("Node {} not found", id)
+        format!("Node [{}] not found", id)
     }
 }
 
@@ -689,7 +710,7 @@ pub fn cmd_deprecate(mm: &mut Mindmap, id: u32, to: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
 
     if !mm.by_id.contains_key(&to) {
         eprintln!(
@@ -714,7 +735,7 @@ pub fn cmd_verify(mm: &mut Mindmap, id: u32) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
     let node = &mut mm.nodes[idx];
 
     let tag = format!("(verify {})", chrono::Local::now().format("%Y-%m-%d"));
@@ -736,7 +757,7 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
     let node = &mm.nodes[idx];
 
     // create temp file with the single node line
@@ -789,7 +810,7 @@ pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
 
     let parsed = parse_node_line(line, mm.nodes[idx].line_index)?;
     if parsed.id != id {
@@ -831,7 +852,7 @@ pub fn cmd_patch(
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
     let node = &mm.nodes[idx];
 
     // split existing raw_title into optional type and title
@@ -889,7 +910,7 @@ pub fn cmd_delete(mm: &mut Mindmap, id: u32, force: bool) -> Result<()> {
     let idx = *mm
         .by_id
         .get(&id)
-        .ok_or_else(|| anyhow::anyhow!(format!("Node {} not found", id)))?;
+        .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
 
     // check incoming references
     let mut incoming_from = Vec::new();
@@ -989,7 +1010,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
     }
 }
 
-pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
+pub fn cmd_orphans(mm: &Mindmap, with_descriptions: bool) -> Result<Vec<String>> {
     let mut warnings = Vec::new();
 
     // Orphans: nodes with no in and no out, excluding META:*
@@ -1006,18 +1027,30 @@ pub fn cmd_orphans(mm: &Mindmap) -> Result<Vec<String>> {
             }
         }
     }
+
+    let mut orphan_nodes = Vec::new();
     for n in &mm.nodes {
         let inc = incoming.get(&n.id).copied().unwrap_or(0);
         let out = n.references.len();
         let title_up = n.raw_title.to_uppercase();
         if inc == 0 && out == 0 && !title_up.starts_with("META") {
-            warnings.push(format!("{}", n.id));
+            orphan_nodes.push(n.clone());
         }
     }
 
-    if warnings.is_empty() {
+    if orphan_nodes.is_empty() {
         Ok(vec!["No orphans".to_string()])
     } else {
+        for n in orphan_nodes {
+            if with_descriptions {
+                warnings.push(format!(
+                    "[{}] **{}** - {}",
+                    n.id, n.raw_title, n.description
+                ));
+            } else {
+                warnings.push(format!("{}", n.id));
+            }
+        }
         Ok(warnings)
     }
 }
@@ -1461,68 +1494,173 @@ pub fn run(cli: Cli) -> Result<()> {
                             node.id, node.raw_title, node.description
                         );
                         if !inbound.is_empty() {
-                            eprintln!("Referred to by: {:?}", inbound);
+                            eprintln!("← Nodes referring to [{}]: {:?}", id, inbound);
+                        }
+                        let outbound: Vec<u32> = node
+                            .references
+                            .iter()
+                            .filter_map(|r| match r {
+                                Reference::Internal(rid) => Some(*rid),
+                                _ => None,
+                            })
+                            .collect();
+                        if !outbound.is_empty() {
+                            eprintln!("→ [{}] refers to: {:?}", id, outbound);
                         }
                     }
                 }
             }
-            None => return Err(anyhow::anyhow!(format!("Node {} not found", id))),
+            None => {
+                let min_id = mm.nodes.iter().map(|n| n.id).min();
+                let max_id = mm.nodes.iter().map(|n| n.id).max();
+                let hint = if let (Some(min), Some(max)) = (min_id, max_id) {
+                    format!(
+                        " (Valid node IDs: {} to {}). Use `mindmap-cli list` to see all nodes.",
+                        min, max
+                    )
+                } else {
+                    " No nodes exist yet. Use `mindmap-cli add` to create one.".to_string()
+                };
+                return Err(anyhow::anyhow!(format!("Node [{}] not found{}", id, hint)));
+            }
         },
         Commands::List { r#type, grep } => {
             let items = cmd_list(&mm, r#type.as_deref(), grep.as_deref());
+            let count = items.len();
+
             if matches!(cli.output, OutputFormat::Json) {
                 let arr: Vec<_> = items
                     .into_iter()
                     .map(|line| serde_json::json!({"line": line}))
                     .collect();
-                let obj = serde_json::json!({"command": "list", "items": arr});
+                let obj = serde_json::json!({"command": "list", "count": count, "items": arr});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
-            } else if let Some(p) = &printer {
-                p.list(&items)?;
             } else {
-                for it in items {
-                    println!("{}", it);
+                if count == 0 {
+                    eprintln!("No matching nodes found (0 results)");
+                } else {
+                    eprintln!(
+                        "Matching nodes ({} result{}:)",
+                        count,
+                        if count == 1 { "" } else { "s" },
+                    );
+                }
+                if let Some(p) = &printer {
+                    p.list(&items)?;
+                } else {
+                    for it in items {
+                        println!("{}", it);
+                    }
                 }
             }
         }
         Commands::Refs { id } => {
             let items = cmd_refs(&mm, id);
+            let count = items.len();
+
+            // First check if the node exists
+            if mm.get_node(id).is_none() {
+                let min_id = mm.nodes.iter().map(|n| n.id).min();
+                let max_id = mm.nodes.iter().map(|n| n.id).max();
+                let hint = if let (Some(min), Some(max)) = (min_id, max_id) {
+                    format!(" (Valid node IDs: {} to {})", min, max)
+                } else {
+                    " No nodes exist.".to_string()
+                };
+                return Err(anyhow::anyhow!(format!("Node [{}] not found{}", id, hint)));
+            }
+
             if matches!(cli.output, OutputFormat::Json) {
-                let obj = serde_json::json!({"command": "refs", "items": items});
+                let obj = serde_json::json!({"command": "refs", "target": id, "count": count, "items": items});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
-            } else if let Some(p) = &printer {
-                p.refs(&items)?;
             } else {
-                for it in items {
-                    println!("{}", it);
+                if count == 0 {
+                    eprintln!("No nodes refer to [{}] (0 results)", id);
+                } else {
+                    eprintln!(
+                        "← Nodes referring to [{}] ({} result{})",
+                        id,
+                        count,
+                        if count == 1 { "" } else { "s" }
+                    );
+                }
+                if let Some(p) = &printer {
+                    p.refs(&items)?;
+                } else {
+                    for it in items {
+                        println!("{}", it);
+                    }
                 }
             }
         }
         Commands::Links { id } => match cmd_links(&mm, id) {
             Some(v) => {
+                let count = v
+                    .iter()
+                    .filter(|r| matches!(r, Reference::Internal(_)))
+                    .count();
                 if matches!(cli.output, OutputFormat::Json) {
-                    let obj = serde_json::json!({"command": "links", "id": id, "links": v});
+                    let obj = serde_json::json!({"command": "links", "source": id, "count": count, "links": v});
                     println!("{}", serde_json::to_string_pretty(&obj)?);
-                } else if let Some(p) = &printer {
-                    p.links(id, &v)?;
                 } else {
-                    println!("Node [{}] references: {:?}", id, v);
+                    if count == 0 {
+                        eprintln!("→ [{}] refers to no nodes (0 results)", id);
+                    } else {
+                        eprintln!(
+                            "→ [{}] refers to ({} result{})",
+                            id,
+                            count,
+                            if count == 1 { "" } else { "s" }
+                        );
+                    }
+                    if let Some(p) = &printer {
+                        p.links(id, &v)?;
+                    } else {
+                        println!("Node [{}] references: {:?}", id, v);
+                    }
                 }
             }
-            None => return Err(anyhow::anyhow!(format!("Node [{}] not found", id))),
+            None => {
+                let min_id = mm.nodes.iter().map(|n| n.id).min();
+                let max_id = mm.nodes.iter().map(|n| n.id).max();
+                let hint = if let (Some(min), Some(max)) = (min_id, max_id) {
+                    format!(" (Valid node IDs: {} to {})", min, max)
+                } else {
+                    " No nodes exist.".to_string()
+                };
+                return Err(anyhow::anyhow!(format!("Node [{}] not found{}", id, hint)));
+            }
         },
         Commands::Search { query } => {
             // Delegate to cmd_list with grep filter (no type filter)
             // This eliminates code duplication; search is an alias for list --grep
             let items = cmd_list(&mm, None, Some(&query));
+            let count = items.len();
+
             if matches!(cli.output, OutputFormat::Json) {
-                let obj = serde_json::json!({"command": "search", "query": query, "items": items});
+                let arr: Vec<_> = items
+                    .into_iter()
+                    .map(|line| serde_json::json!({"line": line}))
+                    .collect();
+                let obj = serde_json::json!({"command": "search", "query": query, "count": count, "items": arr});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
-            } else if let Some(p) = &printer {
-                p.list(&items)?;
             } else {
-                for it in items {
-                    println!("{}", it);
+                if count == 0 {
+                    eprintln!("No matches for '{}' (0 results)", query);
+                } else {
+                    eprintln!(
+                        "Search results for '{}' ({} result{})",
+                        query,
+                        count,
+                        if count == 1 { "" } else { "s" }
+                    );
+                }
+                if let Some(p) = &printer {
+                    p.list(&items)?;
+                } else {
+                    for it in items {
+                        println!("{}", it);
+                    }
                 }
             }
         }
@@ -1709,25 +1847,53 @@ pub fn run(cli: Cli) -> Result<()> {
             } else {
                 let res = cmd_lint(&mm)?;
                 if matches!(cli.output, OutputFormat::Json) {
-                    let obj = serde_json::json!({"command": "lint", "warnings": res});
+                    let obj = serde_json::json!({"command": "lint", "warnings": res.iter().filter(|r| *r != "Lint OK").collect::<Vec<_>>()});
                     println!("{}", serde_json::to_string_pretty(&obj)?);
+                } else if res.len() == 1 && res[0] == "Lint OK" {
+                    eprintln!("✓ Lint OK (0 warnings)");
                 } else {
+                    eprintln!(
+                        "Lint found {} warning{}:",
+                        res.len(),
+                        if res.len() == 1 { "" } else { "s" }
+                    );
                     for r in res {
-                        eprintln!("{}", r);
+                        eprintln!("  - {}", r);
                     }
                 }
             }
         }
-        Commands::Orphans => {
-            let res = cmd_orphans(&mm)?;
+        Commands::Orphans { with_descriptions } => {
+            let res = cmd_orphans(&mm, with_descriptions)?;
             if matches!(cli.output, OutputFormat::Json) {
-                let obj = serde_json::json!({"command": "orphans", "orphans": res});
+                let count = if res.iter().any(|r| r == "No orphans") {
+                    0
+                } else {
+                    res.len()
+                };
+                let obj = serde_json::json!({"command": "orphans", "count": count, "orphans": res});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
-            } else if let Some(p) = &printer {
-                p.orphans(&res)?;
             } else {
-                for r in res {
-                    eprintln!("{}", r);
+                // Print header to stderr
+                if res.iter().any(|r| r == "No orphans") {
+                    eprintln!("✓ No orphans found (0 results)");
+                } else {
+                    eprintln!(
+                        "Orphan nodes ({} result{}):",
+                        res.len(),
+                        if res.len() == 1 { "" } else { "s" }
+                    );
+                }
+
+                // Print data to stdout via printer
+                if let Some(p) = &printer {
+                    p.orphans(&res)?;
+                } else {
+                    for r in res {
+                        if r != "No orphans" {
+                            println!("{}", r);
+                        }
+                    }
                 }
             }
         }
@@ -2154,7 +2320,7 @@ mod tests {
         assert!(joined.contains("Duplicate ID"));
 
         // Orphan detection is now a separate command; verify orphans via cmd_orphans()
-        let orphans = cmd_orphans(&mm)?;
+        let orphans = cmd_orphans(&mm, false)?;
         let joined_o = orphans.join("\n");
         // expect node id 2 to be reported as orphan
         assert!(joined_o.contains("2"));
@@ -2246,13 +2412,13 @@ mod tests {
         let file = temp.child("MINDMAP.md");
         file.write_str("[1] **AE: One** - first node\n[2] **WF: Two** - second node\n[3] **DR: Three** - third\n")?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
-        
+
         // Both should produce the same output
         let search_results = cmd_list(&mm, None, Some("node"));
         let list_grep_results = cmd_list(&mm, None, Some("node"));
         assert_eq!(search_results, list_grep_results);
         assert_eq!(search_results.len(), 2);
-        
+
         temp.close()?;
         Ok(())
     }
@@ -2305,7 +2471,7 @@ mod tests {
         file.write_str("[1] **AE: One** - first\n")?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
         let out = cmd_show(&mm, 99);
-        assert_eq!(out, "Node 99 not found");
+        assert_eq!(out, "Node [99] not found");
         temp.close()?;
         Ok(())
     }
@@ -2341,7 +2507,7 @@ mod tests {
         file.write_str("[1] **AE: One** - first\n")?;
         let mut mm = Mindmap::load(file.path().to_path_buf())?;
         let err = cmd_put(&mut mm, 99, "[99] **AE: New** - new", false).unwrap_err();
-        assert!(format!("{}", err).contains("Node 99 not found"));
+        assert!(format!("{}", err).contains("Node [99] not found"));
         temp.close()?;
         Ok(())
     }
@@ -2353,7 +2519,7 @@ mod tests {
         file.write_str("[1] **AE: One** - first\n")?;
         let mut mm = Mindmap::load(file.path().to_path_buf())?;
         let err = cmd_patch(&mut mm, 99, None, Some("New"), None, false).unwrap_err();
-        assert!(format!("{}", err).contains("Node 99 not found"));
+        assert!(format!("{}", err).contains("Node [99] not found"));
         temp.close()?;
         Ok(())
     }
@@ -2400,7 +2566,7 @@ mod tests {
         let file = temp.child("MINDMAP.md");
         file.write_str("[1] **AE: One** - first\n[2] **AE: Orphan** - lonely\n")?;
         let mm = Mindmap::load(file.path().to_path_buf())?;
-        let orphans = cmd_orphans(&mm)?;
+        let orphans = cmd_orphans(&mm, false)?;
         assert_eq!(orphans, vec!["1".to_string(), "2".to_string()]);
         temp.close()?;
         Ok(())

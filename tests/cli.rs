@@ -33,7 +33,7 @@ fn integration_cli_basic_commands() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("links").arg("2").arg("--file").arg(file.path());
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("references:"));
+        .stdout(predicate::str::contains("refers to:"));
 
     // search
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
@@ -118,7 +118,7 @@ fn integration_cli_basic_commands() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("orphans").arg("--file").arg(file.path());
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("No orphans").or(predicate::str::contains("Orphans")));
+        .stderr(predicate::str::contains("No orphans").or(predicate::str::contains("Orphans")));
 
     temp.close()?;
     Ok(())
@@ -135,12 +135,14 @@ fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Err
     cmd.arg("show").arg("99").arg("--file").arg(file.path());
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Node 99 not found"));
+        .stderr(predicate::str::contains("Node [99] not found"));
 
     // refs for non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("refs").arg("99").arg("--file").arg(file.path());
-    cmd.assert().success().stdout(predicate::str::is_empty()); // empty output
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Node [99] not found"));
 
     // links for non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
@@ -178,7 +180,7 @@ fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Err
         .arg(file.path());
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Node 99 not found"));
+        .stderr(predicate::str::contains("Node [99] not found"));
 
     // put with mismatched ID
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
@@ -202,14 +204,14 @@ fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Err
         .arg(file.path());
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Node 99 not found"));
+        .stderr(predicate::str::contains("Node [99] not found"));
 
     // delete non-existing node
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
     cmd.arg("delete").arg("99").arg("--file").arg(file.path());
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Node 99 not found"));
+        .stderr(predicate::str::contains("Node [99] not found"));
 
     // deprecate to non-existing
     let mut cmd = Command::cargo_bin("mindmap-cli")?;
