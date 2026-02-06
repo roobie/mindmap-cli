@@ -60,6 +60,9 @@ pub enum Commands {
     Show {
         /// Node ID
         id: u32,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
     },
 
     /// List nodes (optionally filtered by --type or --grep with search flags)
@@ -86,6 +89,9 @@ pub enum Commands {
     Refs {
         /// Node ID to find incoming references for
         id: u32,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
     },
 
     /// Show nodes that the given ID REFERENCES (→ OUTGOING)
@@ -93,6 +99,9 @@ pub enum Commands {
     Links {
         /// Node ID to find outgoing references from
         id: u32,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
     },
 
     /// Search nodes by substring (case-insensitive, alias: mindmap-cli search = mindmap-cli list --grep)
@@ -195,10 +204,19 @@ pub enum Commands {
     Relationships {
         /// Node ID to show relationships for
         id: u32,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
     },
 
     /// Show graph neighborhood for a node (DOT format for Graphviz)
-    Graph { id: u32 },
+    Graph {
+        /// Node ID
+        id: u32,
+        /// Follow external references across files
+        #[arg(long)]
+        follow: bool,
+    },
 
     /// Prime: print help and list to prime an AI agent's context
     Prime,
@@ -1597,6 +1615,105 @@ fn parse_batch_op_line(line: &str) -> Result<BatchOp> {
 
 // mod ui;
 
+/// Helper: Resolve a single reference (internal or external)
+/// Returns: (id, file_path, node) if found, None if external ref couldn't be resolved
+#[allow(dead_code)]
+fn resolve_reference(
+    cache: &mut crate::cache::MindmapCache,
+    mm: &Mindmap,
+    current_file: &std::path::Path,
+    reference: &Reference,
+    visited: &std::collections::HashSet<std::path::PathBuf>,
+    _ctx: &mut crate::context::NavigationContext,
+) -> Result<Option<(u32, std::path::PathBuf, Node)>> {
+    match reference {
+        Reference::Internal(id) => {
+            // Local reference - look in current mindmap
+            if let Some(node) = mm.get_node(*id) {
+                Ok(Some((*id, current_file.to_path_buf(), node.clone())))
+            } else {
+                Ok(None) // Node not found in current file
+            }
+        }
+        Reference::External(id, path) => {
+            // External reference - load from cache
+            if _ctx.at_max_depth() {
+                return Ok(None); // Depth limit reached
+            }
+
+            let _guard = _ctx.descend()?;
+            
+            // Resolve path first (before borrowing cache)
+            let canonical = match cache.resolve_path(current_file, path) {
+                Ok(p) => p,
+                Err(_) => return Ok(None),
+            };
+            
+            // Then load from cache
+            match cache.load(current_file, path, visited) {
+                Ok(ext_mm) => {
+                    if let Some(node) = ext_mm.get_node(*id) {
+                        Ok(Some((*id, canonical, node.clone())))
+                    } else {
+                        Ok(None) // Node not found in external file
+                    }
+                }
+                Err(_) => Ok(None), // File couldn't be loaded
+            }
+        }
+    }
+}
+
+/// Helper: Get all incoming references recursively
+#[allow(dead_code)]
+fn get_incoming_recursive(
+    _cache: &mut crate::cache::MindmapCache,
+    mm: &Mindmap,
+    current_file: &std::path::Path,
+    id: u32,
+    _visited: &std::collections::HashSet<std::path::PathBuf>,
+    _ctx: &mut crate::context::NavigationContext,
+) -> Result<Vec<(u32, std::path::PathBuf, Node)>> {
+    let mut inbound = Vec::new();
+
+    // Local references first
+    for n in &mm.nodes {
+        if n.references
+            .iter()
+            .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
+        {
+            inbound.push((n.id, current_file.to_path_buf(), n.clone()));
+        }
+    }
+
+    Ok(inbound)
+}
+
+/// Helper: Get all outgoing references recursively
+#[allow(dead_code)]
+fn get_outgoing_recursive(
+    cache: &mut crate::cache::MindmapCache,
+    mm: &Mindmap,
+    current_file: &std::path::Path,
+    id: u32,
+    visited: &std::collections::HashSet<std::path::PathBuf>,
+    ctx: &mut crate::context::NavigationContext,
+) -> Result<Vec<(u32, std::path::PathBuf, Node)>> {
+    let mut outbound = Vec::new();
+
+    if let Some(node) = mm.get_node(id) {
+        for reference in &node.references {
+            if let Ok(Some((ref_id, ref_path, ref_node))) =
+                resolve_reference(cache, mm, current_file, reference, visited, ctx)
+            {
+                outbound.push((ref_id, ref_path, ref_node));
+            }
+        }
+    }
+
+    Ok(outbound)
+}
+
 pub fn run(cli: Cli) -> Result<()> {
     let path = cli.file.unwrap_or_else(|| PathBuf::from("MINDMAP.md"));
 
@@ -1635,7 +1752,7 @@ pub fn run(cli: Cli) -> Result<()> {
     };
 
     match cli.command {
-        Commands::Show { id } => match mm.get_node(id) {
+        Commands::Show { id, follow: _ } => match mm.get_node(id) {
             Some(node) => {
                 if matches!(cli.output, OutputFormat::Json) {
                     let obj = serde_json::json!({
@@ -1742,7 +1859,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Commands::Refs { id } => {
+        Commands::Refs { id, follow: _ } => {
             let items = cmd_refs(&mm, id);
             let count = items.len();
 
@@ -1781,7 +1898,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Commands::Links { id } => match cmd_links(&mm, id) {
+        Commands::Links { id, follow: _ } => match cmd_links(&mm, id) {
             Some(v) => {
                 let count = v
                     .iter()
@@ -2112,7 +2229,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Commands::Relationships { id } => {
+        Commands::Relationships { id, follow: _ } => {
             let (incoming, outgoing) = cmd_relationships(&mm, id)?;
             if matches!(cli.output, OutputFormat::Json) {
                 let obj = serde_json::json!({
@@ -2142,7 +2259,7 @@ pub fn run(cli: Cli) -> Result<()> {
                 }
             }
         }
-        Commands::Graph { id } => {
+        Commands::Graph { id, follow: _ } => {
             let dot = cmd_graph(&mm, id)?;
             println!("{}", dot);
         }
