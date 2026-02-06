@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::{collections::HashMap, fs, io::Read, path::PathBuf};
 
+pub mod cache;
+pub mod context;
 mod ui;
 
 #[derive(clap::ValueEnum, Clone)]
@@ -233,6 +235,7 @@ pub enum Reference {
     External(u32, String),
 }
 
+#[derive(Debug)]
 pub struct Mindmap {
     pub path: PathBuf,
     pub lines: Vec<String>,
