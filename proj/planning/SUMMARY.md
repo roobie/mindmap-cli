@@ -109,7 +109,7 @@ for each id in ids:
 ### Tests
 - [ ] Unit: multi-show with various ID counts
 - [ ] Unit: multi-delete with force flag
-- [ ] Unit: multi-patch with type/title/desc
+- [ ] Unit: multi-patch with type/title/body
 - [ ] Unit: error cases (missing IDs, etc.)
 - [ ] Integration: full CLI workflows
 - [ ] Shell: test with $(command) substitution

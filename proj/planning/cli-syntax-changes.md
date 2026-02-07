@@ -76,7 +76,7 @@ mindmap delete $ORPHANS --force
 
 **Before (v0):**
 ```bash
-mindmap patch 12 --title "New Title" --desc "New desc"
+mindmap patch 12 --title "New Title" --body "New body"
 # Patched node [12]
 ```
 
@@ -169,13 +169,13 @@ mindmap deprecate $OLD --to 50
 These commands remain single-node focused and don't need multi-ID:
 
 ```bash
-mindmap add --type AE --title "New" --desc "Description"
+mindmap add --type AE --title "New" --body "Description"
 # Add one at a time; batch mode for multiple
 
 mindmap edit 12
 # Edit one node at a time with $EDITOR
 
-mindmap put 12 --line "[12] **AE: New** - description"
+mindmap put 12 --line "[12] **AE: New** - body"
 # Replace one node at a time
 ```
 

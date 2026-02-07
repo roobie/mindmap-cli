@@ -67,7 +67,7 @@ fn integration_cli_basic_commands() -> Result<(), Box<dyn std::error::Error>> {
         .arg("AE")
         .arg("--title")
         .arg("Three")
-        .arg("--desc")
+        .arg("--body")
         .arg("third [1]")
         .arg("--file")
         .arg(file.path());
@@ -171,7 +171,7 @@ fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Err
         .arg("--file")
         .arg(file.path());
     cmd.assert().failure().stderr(predicate::str::contains(
-        "add requires either all of --type,--title,--desc or none",
+        "add requires either all of --type,--title,--body or none",
     ));
 
     // patch non-existing node
@@ -191,7 +191,7 @@ fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Err
     cmd.arg("put")
         .arg("1")
         .arg("--line")
-        .arg("[2] **AE: New** - desc")
+        .arg("[2] **AE: New** - body")
         .arg("--file")
         .arg(file.path());
     cmd.assert().failure().stderr(predicate::str::contains(
@@ -203,7 +203,7 @@ fn integration_cli_errors_and_edge_cases() -> Result<(), Box<dyn std::error::Err
     cmd.arg("put")
         .arg("99")
         .arg("--line")
-        .arg("[99] **AE: New** - desc")
+        .arg("[99] **AE: New** - body")
         .arg("--file")
         .arg(file.path());
     cmd.assert()
@@ -335,7 +335,7 @@ fn integration_cli_json_outputs() -> Result<(), Box<dyn std::error::Error>> {
         .arg("AE")
         .arg("--title")
         .arg("Two")
-        .arg("--desc")
+        .arg("--body")
         .arg("second")
         .arg("--file")
         .arg(file.path());
@@ -442,7 +442,7 @@ fn integration_cli_stdin() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("list")
         .arg("--file")
         .arg("-")
-        .write_stdin("[1] **AE: FromStdin** - desc\n");
+        .write_stdin("[1] **AE: FromStdin** - body\n");
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("[1] **AE: FromStdin**"));
@@ -454,11 +454,11 @@ fn integration_cli_stdin() -> Result<(), Box<dyn std::error::Error>> {
         .arg("AE")
         .arg("--title")
         .arg("Test")
-        .arg("--desc")
+        .arg("--body")
         .arg("test")
         .arg("--file")
         .arg("-")
-        .write_stdin("[1] **AE: FromStdin** - desc\n");
+        .write_stdin("[1] **AE: FromStdin** - body\n");
     cmd.assert().failure().stderr(predicate::str::contains(
         "Cannot add: mindmap was loaded from stdin",
     ));

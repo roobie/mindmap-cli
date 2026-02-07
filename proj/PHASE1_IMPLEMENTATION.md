@@ -199,7 +199,7 @@ $ mindmap-cli list --help
 List nodes (optionally filtered by --type or --grep)
 
   --type <TYPE>    Filter by node type prefix (case-sensitive, e.g., AE, WF, DOC)
-  --grep <GREP>    Filter by substring (case-insensitive, searches title and description)
+  --grep <GREP>    Filter by substring (case-insensitive, searches title and body)
 
 $ mindmap-cli search --help
 Search nodes by substring (case-insensitive, alias: mindmap-cli search = mindmap-cli list --grep)

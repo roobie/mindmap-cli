@@ -218,7 +218,7 @@ if follow {
 
 **Step 4: Output formatting**
 ```
-For each result: "[id] **title** - description (file.md)"
+For each result: "[id] **title** - body (file.md)"
 Count by file: "5 results (3 in MAIN.md, 2 in external.md)"
 ```
 

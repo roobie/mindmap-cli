@@ -212,14 +212,14 @@ fn test_cycle_detection_in_follow() { ... }
 
 ### Single File (backward compatible)
 ```
-[15] **Title** - description
+[15] **Title** - body
 ← Incoming: [7], [9], [42]
 → References: [43], [44], [45]
 ```
 
 ### Multiple Files with --follow
 ```
-[15] **Title** - description
+[15] **Title** - body
 
 → References (3 nodes):
   [43] **DONE: Phase 1** (./MINDMAP.md)

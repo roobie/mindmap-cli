@@ -17,19 +17,19 @@ pub enum OutputFormat {
 #[command(about = "CLI tool for working with MINDMAP files")]
 #[command(
     long_about = r#"mindmap-cli - small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
-One-node-per-line format: [N] **Title** - description with [N] references. IDs must be stable numeric values.
+One-node-per-line format: [N] **Title** - body with [N] references. IDs must be stable numeric values.
 
 EXAMPLES:
   mindmap-cli show 10
   mindmap-cli list --type AE --grep auth
-  mindmap-cli add --type AE --title "AuthService" --desc "Handles auth [12]"
+  mindmap-cli add --type AE --title "AuthService" --body "Handles auth [12]"
   mindmap-cli edit 12               # opens $EDITOR for an atomic, validated edit
-  mindmap-cli patch 12 --title "AuthSvc" --desc "Updated desc"   # partial update (PATCH)
+  mindmap-cli patch 12 --title "AuthSvc" --body "Updated body"   # partial update (PATCH)
   mindmap-cli put 12 --line "[31] **WF: Example** - Full line text [12]"   # full-line replace (PUT)
   mindmap-cli graph 10 | dot -Tpng > graph.png   # generate neighborhood graph
   mindmap-cli lint
   mindmap-cli batch --input - --dry-run <<EOF  # atomic batch from stdin
-  add --type WF --title "New Workflow" --desc "Steps here"
+  add --type WF --title "New Workflow" --body "Steps here"
   patch 15 --title "Updated Workflow"
   delete 19
   EOF
@@ -63,9 +63,9 @@ pub enum Commands {
         /// Follow external references across files
         #[arg(long)]
         follow: bool,
-        /// Print the found node's description only
+        /// Print the found node's body only
         #[arg(long)]
-        desc: bool,
+        body: bool,
     },
 
     /// List nodes (optionally filtered by --type or --grep with search flags)
@@ -111,7 +111,7 @@ pub enum Commands {
     /// Search nodes by substring (case-insensitive by default, use flags for advanced search)
     #[command(alias = "query")]
     Search {
-        /// Search query (searches title and description)
+        /// Search query (searches title and body)
         query: String,
         /// Match case exactly (default: case-insensitive)
         #[arg(long)]
@@ -134,7 +134,7 @@ pub enum Commands {
         #[arg(long)]
         title: Option<String>,
         #[arg(long)]
-        desc: Option<String>,
+        body: Option<String>,
         /// When using editor flow, perform strict reference validation
         #[arg(long)]
         strict: bool,
@@ -150,7 +150,7 @@ pub enum Commands {
     /// Edit a node with $EDITOR
     Edit { id: u32 },
 
-    /// Patch (partial update) a node: --type, --title, --desc
+    /// Patch (partial update) a node: --type, --title, --body
     Patch {
         id: u32,
         #[arg(long)]
@@ -158,7 +158,7 @@ pub enum Commands {
         #[arg(long)]
         title: Option<String>,
         #[arg(long)]
-        desc: Option<String>,
+        body: Option<String>,
         #[arg(long)]
         strict: bool,
     },
@@ -248,7 +248,7 @@ pub enum Commands {
 pub struct Node {
     pub id: u32,
     pub raw_title: String,
-    pub description: String,
+    pub body: String,
     pub references: Vec<Reference>,
     pub line_index: usize,
 }
@@ -464,7 +464,7 @@ impl Mindmap {
 
                     // Update the corresponding line in new_lines
                     new_lines[node.line_index] =
-                        format!("[{}] **{}** - {}", node.id, new_raw, node.description);
+                        format!("[{}] **{}** - {}", node.id, new_raw, node.body);
                     changed = true;
                 }
             }
@@ -530,21 +530,21 @@ pub fn parse_node_line(line: &str, line_index: usize) -> Result<Node> {
     }
     pos += 3;
 
-    let description = trimmed[pos..].to_string();
+    let body = trimmed[pos..].to_string();
 
     // Extract references
-    let references = extract_refs_from_str(&description, Some(id));
+    let references = extract_refs_from_str(&body, Some(id));
 
     Ok(Node {
         id,
         raw_title: title,
-        description,
+        body,
         references,
         line_index,
     })
 }
 
-// Extract references of the form [123] or [234](./file.md) from a description string.
+// Extract references of the form [123] or [234](./file.md) from a body string.
 // If skip_self is Some(id) then occurrences equal to that id are ignored.
 fn extract_refs_from_str(s: &str, skip_self: Option<u32>) -> Vec<Reference> {
     let mut refs = Vec::new();
@@ -593,10 +593,7 @@ fn extract_refs_from_str(s: &str, skip_self: Option<u32>) -> Vec<Reference> {
 
 pub fn cmd_show(mm: &Mindmap, id: u32) -> String {
     if let Some(node) = mm.get_node(id) {
-        let mut out = format!(
-            "[{}] **{}** - {}",
-            node.id, node.raw_title, node.description
-        );
+        let mut out = format!("[{}] **{}** - {}", node.id, node.raw_title, node.body);
 
         // inbound refs
         let mut inbound = Vec::new();
@@ -649,7 +646,7 @@ pub fn cmd_list(
         if let Some(q) = grep {
             let matches = if let Some(re) = &regex_pattern {
                 // Regex search
-                re.is_match(&n.raw_title) || re.is_match(&n.description)
+                re.is_match(&n.raw_title) || re.is_match(&n.body)
             } else if exact_match {
                 // Exact phrase match
                 let query = if case_sensitive {
@@ -662,15 +659,15 @@ pub fn cmd_list(
                 } else {
                     n.raw_title.to_lowercase()
                 };
-                let desc = if case_sensitive {
-                    n.description.clone()
+                let body = if case_sensitive {
+                    n.body.clone()
                 } else {
-                    n.description.to_lowercase()
+                    n.body.to_lowercase()
                 };
                 title == query
-                    || desc == query
+                    || body == query
                     || title.contains(&format!(" {} ", query))
-                    || desc.contains(&format!(" {} ", query))
+                    || body.contains(&format!(" {} ", query))
             } else {
                 // Substring match
                 let query = if case_sensitive {
@@ -683,12 +680,12 @@ pub fn cmd_list(
                 } else {
                     n.raw_title.to_lowercase()
                 };
-                let desc = if case_sensitive {
-                    n.description.clone()
+                let body = if case_sensitive {
+                    n.body.clone()
                 } else {
-                    n.description.to_lowercase()
+                    n.body.to_lowercase()
                 };
-                title.contains(&query) || desc.contains(&query)
+                title.contains(&query) || body.contains(&query)
             };
 
             if !matches {
@@ -696,10 +693,7 @@ pub fn cmd_list(
             }
         }
 
-        res.push(format!(
-            "[{}] **{}** - {}",
-            n.id, n.raw_title, n.description
-        ));
+        res.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.body));
     }
     res
 }
@@ -711,10 +705,7 @@ pub fn cmd_refs(mm: &Mindmap, id: u32) -> Vec<String> {
             .iter()
             .any(|r| matches!(r, Reference::Internal(iid) if *iid == id))
         {
-            out.push(format!(
-                "[{}] **{}** - {}",
-                n.id, n.raw_title, n.description
-            ));
+            out.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.body));
         }
     }
     out
@@ -727,20 +718,20 @@ pub fn cmd_links(mm: &Mindmap, id: u32) -> Option<Vec<Reference>> {
 // NOTE: cmd_search was consolidated into cmd_list to eliminate code duplication.
 // See `Commands::Search` handler below which delegates to `cmd_list(mm, None, Some(query))`.
 
-pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, desc: &str) -> Result<u32> {
+pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, body: &str) -> Result<u32> {
     let id = mm.next_id();
     let full_title = format!("{}: {}", type_prefix, title);
-    let line = format!("[{}] **{}** - {}", id, full_title, desc);
+    let line = format!("[{}] **{}** - {}", id, full_title, body);
 
     mm.lines.push(line.clone());
 
     let line_index = mm.lines.len() - 1;
-    let references = extract_refs_from_str(desc, Some(id));
+    let references = extract_refs_from_str(body, Some(id));
 
     let node = Node {
         id,
         raw_title: full_title,
-        description: desc.to_string(),
+        body: body.to_string(),
         references,
         line_index,
     };
@@ -759,7 +750,7 @@ pub fn cmd_add_editor(mm: &mut Mindmap, editor: &str, strict: bool) -> Result<u3
     }
 
     let id = mm.next_id();
-    let template = format!("[{}] **TYPE: Title** - description", id);
+    let template = format!("[{}] **TYPE: Title** - body", id);
 
     // create temp file and write template
     let mut tmp = tempfile::NamedTempFile::new()
@@ -822,7 +813,7 @@ pub fn cmd_add_editor(mm: &mut Mindmap, editor: &str, strict: bool) -> Result<u3
     let node = Node {
         id: parsed.id,
         raw_title: parsed.raw_title,
-        description: parsed.description,
+        body: parsed.body,
         references: parsed.references,
         line_index,
     };
@@ -848,10 +839,7 @@ pub fn cmd_deprecate(mm: &mut Mindmap, id: u32, to: u32) -> Result<()> {
     let node = &mut mm.nodes[idx];
     if !node.raw_title.starts_with("[DEPRECATED") {
         node.raw_title = format!("[DEPRECATED → {}] {}", to, node.raw_title);
-        mm.lines[node.line_index] = format!(
-            "[{}] **{}** - {}",
-            node.id, node.raw_title, node.description
-        );
+        mm.lines[node.line_index] = format!("[{}] **{}** - {}", node.id, node.raw_title, node.body);
     }
 
     Ok(())
@@ -865,16 +853,13 @@ pub fn cmd_verify(mm: &mut Mindmap, id: u32) -> Result<()> {
     let node = &mut mm.nodes[idx];
 
     let tag = format!("(verify {})", chrono::Local::now().format("%Y-%m-%d"));
-    if !node.description.contains("(verify ") {
-        if node.description.is_empty() {
-            node.description = tag.clone();
+    if !node.body.contains("(verify ") {
+        if node.body.is_empty() {
+            node.body = tag.clone();
         } else {
-            node.description = format!("{} {}", node.description, tag);
+            node.body = format!("{} {}", node.body, tag);
         }
-        mm.lines[node.line_index] = format!(
-            "[{}] **{}** - {}",
-            node.id, node.raw_title, node.description
-        );
+        mm.lines[node.line_index] = format!("[{}] **{}** - {}", node.id, node.raw_title, node.body);
     }
     Ok(())
 }
@@ -890,11 +875,7 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let mut tmp =
         tempfile::NamedTempFile::new().with_context(|| "Failed to create temp file for editing")?;
     use std::io::Write;
-    writeln!(
-        tmp,
-        "[{}] **{}** - {}",
-        node.id, node.raw_title, node.description
-    )?;
+    writeln!(tmp, "[{}] **{}** - {}", node.id, node.raw_title, node.body)?;
     tmp.flush()?;
 
     // launch editor
@@ -919,13 +900,13 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     // all good: replace line in mm.lines and update node fields
     mm.lines[node.line_index] = edited_line.to_string();
     let new_title = parsed.raw_title;
-    let new_desc = parsed.description;
+    let new_desc = parsed.body;
     let new_refs = parsed.references;
 
     // update node in-place
     let node_mut = &mut mm.nodes[idx];
     node_mut.raw_title = new_title;
-    node_mut.description = new_desc;
+    node_mut.body = new_desc;
     node_mut.references = new_refs;
 
     Ok(())
@@ -961,7 +942,7 @@ pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()
     mm.lines[mm.nodes[idx].line_index] = line.to_string();
     let node_mut = &mut mm.nodes[idx];
     node_mut.raw_title = parsed.raw_title;
-    node_mut.description = parsed.description;
+    node_mut.body = parsed.body;
     node_mut.references = parsed.references;
 
     Ok(())
@@ -972,7 +953,7 @@ pub fn cmd_patch(
     id: u32,
     typ: Option<&str>,
     title: Option<&str>,
-    desc: Option<&str>,
+    body: Option<&str>,
     strict: bool,
 ) -> Result<()> {
     let idx = *mm
@@ -991,7 +972,7 @@ pub fn cmd_patch(
 
     let new_type = typ.unwrap_or(existing_type.unwrap_or(""));
     let new_title = title.unwrap_or(existing_title);
-    let new_desc = desc.unwrap_or(&node.description);
+    let new_desc = body.unwrap_or(&node.body);
 
     // build raw title: if type is empty, omit prefix
     let new_raw_title = if new_type.is_empty() {
@@ -1025,7 +1006,7 @@ pub fn cmd_patch(
     mm.lines[node.line_index] = new_line;
     let node_mut = &mut mm.nodes[idx];
     node_mut.raw_title = parsed.raw_title;
-    node_mut.description = parsed.description;
+    node_mut.body = parsed.body;
     node_mut.references = parsed.references;
 
     Ok(())
@@ -1228,10 +1209,7 @@ pub fn cmd_orphans(mm: &Mindmap, with_descriptions: bool) -> Result<Vec<String>>
     } else {
         for n in orphan_nodes {
             if with_descriptions {
-                warnings.push(format!(
-                    "[{}] **{}** - {}",
-                    n.id, n.raw_title, n.description
-                ));
+                warnings.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.body));
             } else {
                 warnings.push(format!("{}", n.id));
             }
@@ -1382,13 +1360,13 @@ enum BatchOp {
     Add {
         type_prefix: String,
         title: String,
-        desc: String,
+        body: String,
     },
     Patch {
         id: u32,
         type_prefix: Option<String>,
         title: Option<String>,
-        desc: Option<String>,
+        body: Option<String>,
     },
     Put {
         id: u32,
@@ -1439,15 +1417,15 @@ fn parse_batch_op_json(val: &serde_json::Value) -> Result<BatchOp> {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow::anyhow!("add: missing 'title' field"))?
                 .to_string();
-            let desc = obj
-                .get("desc")
+            let body = obj
+                .get("body")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("add: missing 'desc' field"))?
+                .ok_or_else(|| anyhow::anyhow!("add: missing 'body' field"))?
                 .to_string();
             Ok(BatchOp::Add {
                 type_prefix,
                 title,
-                desc,
+                body,
             })
         }
         "patch" => {
@@ -1458,12 +1436,12 @@ fn parse_batch_op_json(val: &serde_json::Value) -> Result<BatchOp> {
                 as u32;
             let type_prefix = obj.get("type").and_then(|v| v.as_str()).map(String::from);
             let title = obj.get("title").and_then(|v| v.as_str()).map(String::from);
-            let desc = obj.get("desc").and_then(|v| v.as_str()).map(String::from);
+            let body = obj.get("body").and_then(|v| v.as_str()).map(String::from);
             Ok(BatchOp::Patch {
                 id,
                 type_prefix,
                 title,
-                desc,
+                body,
             })
         }
         "put" => {
@@ -1513,7 +1491,7 @@ fn parse_batch_op_json(val: &serde_json::Value) -> Result<BatchOp> {
     }
 }
 
-/// Parse a batch operation from a CLI line (e.g., "add --type WF --title X --desc Y")
+/// Parse a batch operation from a CLI line (e.g., "add --type WF --title X --body Y")
 fn parse_batch_op_line(line: &str) -> Result<BatchOp> {
     use shell_words;
 
@@ -1526,7 +1504,7 @@ fn parse_batch_op_line(line: &str) -> Result<BatchOp> {
         "add" => {
             let mut type_prefix = String::new();
             let mut title = String::new();
-            let mut desc = String::new();
+            let mut body = String::new();
             let mut i = 1;
             while i < parts.len() {
                 match parts[i].as_str() {
@@ -1544,24 +1522,24 @@ fn parse_batch_op_line(line: &str) -> Result<BatchOp> {
                             .ok_or_else(|| anyhow::anyhow!("add: --title requires value"))?
                             .clone();
                     }
-                    "--desc" => {
+                    "--body" => {
                         i += 1;
-                        desc = parts
+                        body = parts
                             .get(i)
-                            .ok_or_else(|| anyhow::anyhow!("add: --desc requires value"))?
+                            .ok_or_else(|| anyhow::anyhow!("add: --body requires value"))?
                             .clone();
                     }
                     _ => {}
                 }
                 i += 1;
             }
-            if type_prefix.is_empty() || title.is_empty() || desc.is_empty() {
-                return Err(anyhow::anyhow!("add: requires --type, --title, --desc"));
+            if type_prefix.is_empty() || title.is_empty() || body.is_empty() {
+                return Err(anyhow::anyhow!("add: requires --type, --title, --body"));
             }
             Ok(BatchOp::Add {
                 type_prefix,
                 title,
-                desc,
+                body,
             })
         }
         "patch" => {
@@ -1571,7 +1549,7 @@ fn parse_batch_op_line(line: &str) -> Result<BatchOp> {
                 .parse()?;
             let mut type_prefix: Option<String> = None;
             let mut title: Option<String> = None;
-            let mut desc: Option<String> = None;
+            let mut body: Option<String> = None;
             let mut i = 2;
             while i < parts.len() {
                 match parts[i].as_str() {
@@ -1593,12 +1571,12 @@ fn parse_batch_op_line(line: &str) -> Result<BatchOp> {
                                 .clone(),
                         );
                     }
-                    "--desc" => {
+                    "--body" => {
                         i += 1;
-                        desc = Some(
+                        body = Some(
                             parts
                                 .get(i)
-                                .ok_or_else(|| anyhow::anyhow!("patch: --desc requires value"))?
+                                .ok_or_else(|| anyhow::anyhow!("patch: --body requires value"))?
                                 .clone(),
                         );
                     }
@@ -1610,7 +1588,7 @@ fn parse_batch_op_line(line: &str) -> Result<BatchOp> {
                 id,
                 type_prefix,
                 title,
-                desc,
+                body,
             })
         }
         "put" => {
@@ -1817,7 +1795,7 @@ pub fn run(cli: Cli) -> Result<()> {
     };
 
     match cli.command {
-        Commands::Show { id, follow, desc } => match mm.get_node(id) {
+        Commands::Show { id, follow, body } => match mm.get_node(id) {
             Some(node) => {
                 if follow {
                     // Recursive mode: follow external references
@@ -1864,7 +1842,7 @@ pub fn run(cli: Cli) -> Result<()> {
                             "node": {
                                 "id": node.id,
                                 "raw_title": node.raw_title,
-                                "description": node.description,
+                                "body": node.body,
                                 "file": path.to_string_lossy(),
                                 "line_index": node.line_index,
                             },
@@ -1881,14 +1859,14 @@ pub fn run(cli: Cli) -> Result<()> {
                             get_outgoing_recursive(&mut cache, &mm, &path, id, &visited, &mut ctx)
                                 .unwrap_or_default();
 
-                        if desc {
-                            println!("{}", node.description);
+                        if body {
+                            println!("{}", node.body);
                         } else {
                             println!(
                                 "[{}] **{}** - {} ({})",
                                 node.id,
                                 node.raw_title,
-                                node.description,
+                                node.body,
                                 path.display()
                             );
                         }
@@ -1934,7 +1912,7 @@ pub fn run(cli: Cli) -> Result<()> {
                             "node": {
                                 "id": node.id,
                                 "raw_title": node.raw_title,
-                                "description": node.description,
+                                "body": node.body,
                                 "file": path.to_string_lossy(),
                                 "references": node.references,
                                 "line_index": node.line_index,
@@ -1952,15 +1930,12 @@ pub fn run(cli: Cli) -> Result<()> {
                                 inbound.push(n.id);
                             }
                         }
-                        if desc {
-                            println!("{}", node.description);
+                        if body {
+                            println!("{}", node.body);
                         } else if let Some(p) = &printer {
                             p.show(node, &inbound, &node.references)?;
                         } else {
-                            println!(
-                                "[{}] **{}** - {}",
-                                node.id, node.raw_title, node.description
-                            );
+                            println!("[{}] **{}** - {}", node.id, node.raw_title, node.body);
                             if !inbound.is_empty() {
                                 eprintln!("← Nodes referring to [{}]: {:?}", id, inbound);
                             }
@@ -2097,7 +2072,7 @@ pub fn run(cli: Cli) -> Result<()> {
                             "[{}] **{}** - {} ({})",
                             ref_id,
                             ref_node.raw_title,
-                            ref_node.description,
+                            ref_node.body,
                             ref_path.display()
                         );
                     }
@@ -2198,7 +2173,7 @@ pub fn run(cli: Cli) -> Result<()> {
                             "[{}] **{}** - {} ({})",
                             ref_id,
                             ref_node.raw_title,
-                            ref_node.description,
+                            ref_node.body,
                             ref_path.display()
                         );
                     }
@@ -2402,20 +2377,20 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::Add {
             r#type,
             title,
-            desc,
+            body,
             strict,
         } => {
             if mm.path.as_os_str() == "-" {
                 return Err(cannot_write_err("add"));
             }
-            match (r#type.as_deref(), title.as_deref(), desc.as_deref()) {
+            match (r#type.as_deref(), title.as_deref(), body.as_deref()) {
                 (Some(tp), Some(tt), Some(dd)) => {
                     let id = cmd_add(&mut mm, tp, tt, dd)?;
                     mm.save()?;
                     if matches!(cli.output, OutputFormat::Json)
                         && let Some(node) = mm.get_node(id)
                     {
-                        let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                        let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "body": node.body, "references": node.references}});
                         println!("{}", serde_json::to_string_pretty(&obj)?);
                     }
                     eprintln!("Added node [{}]", id);
@@ -2433,14 +2408,14 @@ pub fn run(cli: Cli) -> Result<()> {
                     if matches!(cli.output, OutputFormat::Json)
                         && let Some(node) = mm.get_node(id)
                     {
-                        let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                        let obj = serde_json::json!({"command": "add", "node": {"id": node.id, "raw_title": node.raw_title, "body": node.body, "references": node.references}});
                         println!("{}", serde_json::to_string_pretty(&obj)?);
                     }
                     eprintln!("Added node [{}]", id);
                 }
                 _ => {
                     return Err(anyhow::anyhow!(
-                        "add requires either all of --type,--title,--desc or none (editor)"
+                        "add requires either all of --type,--title,--body or none (editor)"
                     ));
                 }
             }
@@ -2469,7 +2444,7 @@ pub fn run(cli: Cli) -> Result<()> {
             if matches!(cli.output, OutputFormat::Json)
                 && let Some(node) = mm.get_node(id)
             {
-                let obj = serde_json::json!({"command": "edit", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                let obj = serde_json::json!({"command": "edit", "node": {"id": node.id, "raw_title": node.raw_title, "body": node.body, "references": node.references}});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             }
             eprintln!("Edited node [{}]", id);
@@ -2478,7 +2453,7 @@ pub fn run(cli: Cli) -> Result<()> {
             id,
             r#type,
             title,
-            desc,
+            body,
             strict,
         } => {
             if mm.path.as_os_str() == "-" {
@@ -2489,14 +2464,14 @@ pub fn run(cli: Cli) -> Result<()> {
                 id,
                 r#type.as_deref(),
                 title.as_deref(),
-                desc.as_deref(),
+                body.as_deref(),
                 strict,
             )?;
             mm.save()?;
             if matches!(cli.output, OutputFormat::Json)
                 && let Some(node) = mm.get_node(id)
             {
-                let obj = serde_json::json!({"command": "patch", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                let obj = serde_json::json!({"command": "patch", "node": {"id": node.id, "raw_title": node.raw_title, "body": node.body, "references": node.references}});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             }
             eprintln!("Patched node [{}]", id);
@@ -2510,7 +2485,7 @@ pub fn run(cli: Cli) -> Result<()> {
             if matches!(cli.output, OutputFormat::Json)
                 && let Some(node) = mm.get_node(id)
             {
-                let obj = serde_json::json!({"command": "put", "node": {"id": node.id, "raw_title": node.raw_title, "description": node.description, "references": node.references}});
+                let obj = serde_json::json!({"command": "put", "node": {"id": node.id, "raw_title": node.raw_title, "body": node.body, "references": node.references}});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             }
             eprintln!("Put node [{}]", id);
@@ -2524,7 +2499,7 @@ pub fn run(cli: Cli) -> Result<()> {
             if matches!(cli.output, OutputFormat::Json)
                 && let Some(node) = mm.get_node(id)
             {
-                let obj = serde_json::json!({"command": "verify", "node": {"id": node.id, "description": node.description}});
+                let obj = serde_json::json!({"command": "verify", "node": {"id": node.id, "body": node.body}});
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             }
             eprintln!("Marked node [{}] for verification", id);
@@ -2915,8 +2890,8 @@ pub fn run(cli: Cli) -> Result<()> {
                     BatchOp::Add {
                         type_prefix,
                         title,
-                        desc,
-                    } => match cmd_add(&mut mm_clone, type_prefix, title, desc) {
+                        body,
+                    } => match cmd_add(&mut mm_clone, type_prefix, title, body) {
                         Ok(id) => {
                             result.added_ids.push(id);
                             result.applied += 1;
@@ -2929,14 +2904,14 @@ pub fn run(cli: Cli) -> Result<()> {
                         id,
                         type_prefix,
                         title,
-                        desc,
+                        body,
                     } => {
                         match cmd_patch(
                             &mut mm_clone,
                             *id,
                             type_prefix.as_deref(),
                             title.as_deref(),
-                            desc.as_deref(),
+                            body.as_deref(),
                             false,
                         ) {
                             Ok(_) => {
@@ -3157,7 +3132,7 @@ mod tests {
         let node = Node {
             id,
             raw_title: "AE: C".to_string(),
-            description: "new".to_string(),
+            body: "new".to_string(),
             references: vec![],
             line_index: mm.lines.len() - 1,
         };
@@ -3207,7 +3182,7 @@ mod tests {
         assert_eq!(mm.get_node(1).unwrap().raw_title, "AE: OneNew");
 
         // put full line for node 2
-        let new_line = "[2] **DR: Replaced** - replaced desc [1]";
+        let new_line = "[2] **DR: Replaced** - replaced body [1]";
         cmd_put(&mut mm, 2, new_line, false)?;
         assert_eq!(mm.get_node(2).unwrap().raw_title, "DR: Replaced");
         assert_eq!(
@@ -3325,7 +3300,7 @@ mod tests {
         let mut mm = Mindmap::load(file.path().to_path_buf())?;
         cmd_verify(&mut mm, 1)?;
         let node = mm.get_node(1).unwrap();
-        assert!(node.description.contains("(verify"));
+        assert!(node.body.contains("(verify"));
         temp.close()?;
         Ok(())
     }
@@ -3569,7 +3544,7 @@ mod tests {
     fn test_lint_fix_duplicated_type() -> Result<()> {
         let temp = assert_fs::TempDir::new()?;
         let file = temp.child("MINDMAP.md");
-        file.write_str("[1] **AE: AE: Auth** - desc\n")?;
+        file.write_str("[1] **AE: AE: Auth** - body\n")?;
 
         let mut mm = Mindmap::load(file.path().to_path_buf())?;
         let report = mm.apply_fixes()?;
@@ -3578,7 +3553,7 @@ mod tests {
         mm.save()?;
 
         let content = std::fs::read_to_string(file.path())?;
-        assert!(content.contains("[1] **AE: Auth** - desc"));
+        assert!(content.contains("[1] **AE: Auth** - body"));
         temp.close()?;
         Ok(())
     }
@@ -3641,17 +3616,17 @@ mod tests {
 
     #[test]
     fn test_batch_op_parse_line_add() -> Result<()> {
-        let line = "add --type WF --title Test --desc desc";
+        let line = "add --type WF --title Test --body body";
         let op = parse_batch_op_line(line)?;
         match op {
             BatchOp::Add {
                 type_prefix,
                 title,
-                desc,
+                body,
             } => {
                 assert_eq!(type_prefix, "WF");
                 assert_eq!(title, "Test");
-                assert_eq!(desc, "desc");
+                assert_eq!(body, "body");
             }
             _ => panic!("Expected Add op"),
         }
@@ -3667,12 +3642,12 @@ mod tests {
                 id,
                 title,
                 type_prefix,
-                desc,
+                body,
             } => {
                 assert_eq!(id, 1);
                 assert_eq!(title, Some("NewTitle".to_string()));
                 assert_eq!(type_prefix, None);
-                assert_eq!(desc, None);
+                assert_eq!(body, None);
             }
             _ => panic!("Expected Patch op"),
         }
@@ -3716,7 +3691,7 @@ mod tests {
         file.write_str("[1] **AE: A** - a\n")?;
 
         // Simulate batch with one add operation (use quotes for multi-word args)
-        let batch_input = r#"add --type WF --title Work --desc "do work""#;
+        let batch_input = r#"add --type WF --title Work --body "do work""#;
         let ops = vec![parse_batch_op_line(batch_input)?];
 
         let mut mm = Mindmap::load(file.path().to_path_buf())?;
@@ -3725,9 +3700,9 @@ mod tests {
                 BatchOp::Add {
                     type_prefix,
                     title,
-                    desc,
+                    body,
                 } => {
-                    cmd_add(&mut mm, &type_prefix, &title, &desc)?;
+                    cmd_add(&mut mm, &type_prefix, &title, &body)?;
                 }
                 _ => {}
             }

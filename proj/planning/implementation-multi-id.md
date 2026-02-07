@@ -28,7 +28,7 @@ pub enum Commands {
         force: bool,
     },
 
-    /// Patch (partial update) node(s): --type, --title, --desc
+    /// Patch (partial update) node(s): --type, --title, --body
     Patch {
         /// Node IDs to patch (one or more)
         ids: Vec<u32>,
@@ -37,7 +37,7 @@ pub enum Commands {
         #[arg(long)]
         title: Option<String>,
         #[arg(long)]
-        desc: Option<String>,
+        body: Option<String>,
         #[arg(long)]
         strict: bool,
     },
@@ -91,10 +91,10 @@ pub fn run(cli: Cli) -> Result<()> {
             ids,
             r#type,
             title,
-            desc,
+            body,
             strict,
         } => {
-            cmd_multi_patch(&mut mm, ids, type_.as_deref(), title.as_deref(), desc.as_deref(), *strict)?;
+            cmd_multi_patch(&mut mm, ids, type_.as_deref(), title.as_deref(), body.as_deref(), *strict)?;
             eprintln!("Patched {} node(s)", ids.len());
         }
 
@@ -139,7 +139,7 @@ pub fn cmd_multi_patch(
     ids: &[u32],
     type_: Option<&str>,
     title: Option<&str>,
-    desc: Option<&str>,
+    body: Option<&str>,
     strict: bool,
 ) -> Result<()> {
     // Validate all IDs exist first
@@ -151,7 +151,7 @@ pub fn cmd_multi_patch(
 
     // Apply patch to each node
     for id in ids {
-        cmd_patch(mm, *id, type_, title, desc, strict)?;
+        cmd_patch(mm, *id, type_, title, body, strict)?;
     }
     
     mm.save()
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn test_cmd_multi_show_single_id() {
         let mm = Mindmap::from_string(
-            "[10] **AE: Test** - description [11]\n[11] **WF: Other** - test",
+            "[10] **AE: Test** - body [11]\n[11] **WF: Other** - test",
             PathBuf::from("test.md"),
         ).unwrap();
         let results = cmd_multi_show(&mm, &[10]);
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn test_cmd_multi_show_multiple_ids() {
         let mm = Mindmap::from_string(
-            "[10] **AE: Test** - description\n[11] **WF: Other** - test\n[12] **DR: Why** - reason",
+            "[10] **AE: Test** - body\n[11] **WF: Other** - test\n[12] **DR: Why** - reason",
             PathBuf::from("test.md"),
         ).unwrap();
         let results = cmd_multi_show(&mm, &[10, 12]);
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn test_cmd_multi_show_missing_id() {
         let mm = Mindmap::from_string(
-            "[10] **AE: Test** - description",
+            "[10] **AE: Test** - body",
             PathBuf::from("test.md"),
         ).unwrap();
         let results = cmd_multi_show(&mm, &[10, 99]);
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_cmd_multi_delete() {
         let mut mm = Mindmap::from_string(
-            "[10] **AE: Test** - desc\n[11] **WF: Other** - test\n[12] **DR: Why** - reason",
+            "[10] **AE: Test** - body\n[11] **WF: Other** - test\n[12] **DR: Why** - reason",
             PathBuf::from("test.md"),
         ).unwrap();
         
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn test_cmd_multi_patch() {
         let mut mm = Mindmap::from_string(
-            "[10] **AE: Test** - desc\n[11] **AE: Other** - test",
+            "[10] **AE: Test** - body\n[11] **AE: Other** - test",
             PathBuf::from("test.md"),
         ).unwrap();
         
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn test_cmd_multi_patch_missing_id_fails() {
         let mut mm = Mindmap::from_string(
-            "[10] **AE: Test** - desc",
+            "[10] **AE: Test** - body",
             PathBuf::from("test.md"),
         ).unwrap();
         
@@ -267,20 +267,20 @@ mod tests {
     #[test]
     fn test_cmd_multi_verify() {
         let mut mm = Mindmap::from_string(
-            "[10] **AE: Test** - desc\n[11] **AE: Other** - test",
+            "[10] **AE: Test** - body\n[11] **AE: Other** - test",
             PathBuf::from("test.md"),
         ).unwrap();
         
         cmd_multi_verify(&mut mm, &[10, 11]).unwrap();
         
         let n10 = mm.get_node(10).unwrap();
-        assert!(n10.description.contains("(verify"));
+        assert!(n10.body.contains("(verify"));
     }
 
     #[test]
     fn test_cmd_multi_deprecate() {
         let mut mm = Mindmap::from_string(
-            "[10] **AE: Old** - desc\n[11] **AE: Newer** - desc\n[99] **AE: Target** - target",
+            "[10] **AE: Old** - body\n[11] **AE: Newer** - body\n[99] **AE: Target** - target",
             PathBuf::from("test.md"),
         ).unwrap();
         
@@ -301,7 +301,7 @@ mod tests {
 #[test]
 fn test_multi_show_via_cli() {
     let temp_file = create_temp_mindmap(
-        "[10] **AE: Test** - desc\n[11] **WF: Other** - test\n[12] **DR: Why** - reason"
+        "[10] **AE: Test** - body\n[11] **WF: Other** - test\n[12] **DR: Why** - reason"
     );
     
     let output = run_cli(&["show", "10", "12", "--file", temp_file.path().to_str().unwrap()]);
@@ -314,7 +314,7 @@ fn test_multi_show_via_cli() {
 #[test]
 fn test_multi_delete_via_cli() {
     let temp_file = create_temp_mindmap(
-        "[10] **AE: Test** - desc\n[11] **WF: Other** - test\n[12] **DR: Why** - reason"
+        "[10] **AE: Test** - body\n[11] **WF: Other** - test\n[12] **DR: Why** - reason"
     );
     
     run_cli(&["delete", "10", "12", "--force", "--file", temp_file.path().to_str().unwrap()]);
@@ -328,7 +328,7 @@ fn test_multi_delete_via_cli() {
 #[test]
 fn test_multi_patch_via_cli() {
     let temp_file = create_temp_mindmap(
-        "[10] **AE: Test** - desc\n[11] **AE: Other** - test"
+        "[10] **AE: Test** - body\n[11] **AE: Other** - test"
     );
     
     run_cli(&["patch", "10", "11", "--title", "Updated", "--file", temp_file.path().to_str().unwrap()]);
@@ -376,7 +376,7 @@ Error: Cannot delete node 12; it is referenced by [10][11]
 
 ### Patch with Invalid References (--strict)
 ```bash
-$ mindmap patch 12 --desc "See [99]" --strict
+$ mindmap patch 12 --body "See [99]" --strict
 Error: Referenced node 99 not found
 ```
 

@@ -35,7 +35,7 @@ impl Printer for PrettyPrinter {
         Console::new(&node.raw_title).bold().println();
 
         // Description on new line
-        Console::new(&node.description).println();
+        Console::new(&node.body).println();
 
         // Incoming references in blue
         if !inbound.is_empty() {
@@ -121,7 +121,7 @@ impl Printer for PlainPrinter {
         outbound: &[crate::Reference],
     ) -> Result<()> {
         println!("[{}] {}", node.id, node.raw_title);
-        println!("{}", node.description);
+        println!("{}", node.body);
         if !inbound.is_empty() {
             println!("← Referring nodes: {:?}", inbound);
         }
@@ -191,7 +191,7 @@ mod tests {
         let node = crate::Node {
             id: 1,
             raw_title: "AE: Test".to_string(),
-            description: "desc".to_string(),
+            body: "body".to_string(),
             references: vec![crate::Reference::Internal(2)],
             line_index: 0,
         };
@@ -210,7 +210,7 @@ mod tests {
         let node = crate::Node {
             id: 1,
             raw_title: "AE: Test".to_string(),
-            description: "desc".to_string(),
+            body: "body".to_string(),
             references: vec![crate::Reference::Internal(2)],
             line_index: 0,
         };

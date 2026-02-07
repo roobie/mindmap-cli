@@ -6,7 +6,7 @@
 ```bash
 mindmap-cli search "auth"
 ```
-Output: All nodes containing "auth" in title or description
+Output: All nodes containing "auth" in title or body
 
 ### `list` Command  
 ```bash
@@ -31,7 +31,7 @@ mindmap-cli list --type AE --grep "auth"  # AE: nodes with "auth"
 │  ↓                                              │  │
 │  cmd_search(mm, "auth")                        │  │
 │  → loop: n.title.contains("auth") ||            │  │
-│          n.description.contains("auth")         │  │
+│          n.body.contains("auth")         │  │
 │  ↓                                              │  │
 │  Output: matching nodes                         │  │
 │                                                 │  │
@@ -42,7 +42,7 @@ mindmap-cli list --type AE --grep "auth"  # AE: nodes with "auth"
 │  ↓                                              │  │
 │  cmd_list(mm, None, Some("auth"))              │  │
 │  → loop: n.title.contains("auth") ||            │  │
-│          n.description.contains("auth")         │  │
+│          n.body.contains("auth")         │  │
 │  ↓                                              │  │
 │  Output: matching nodes                         │  │
 │                                                 │  │
@@ -58,8 +58,8 @@ pub fn cmd_search(mm: &Mindmap, query: &str) -> Vec<String> {
     let mut out = Vec::new();
     for n in &mm.nodes {
         if n.raw_title.to_lowercase().contains(&qlc) || 
-           n.description.to_lowercase().contains(&qlc) {
-            out.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.description));
+           n.body.to_lowercase().contains(&qlc) {
+            out.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.body));
         }
     }
     out
@@ -77,11 +77,11 @@ pub fn cmd_list(mm: &Mindmap, type_filter: Option<&str>, grep: Option<&str>) -> 
         if let Some(q) = grep {
             let qlc = q.to_lowercase();
             if !n.raw_title.to_lowercase().contains(&qlc) &&
-               !n.description.to_lowercase().contains(&qlc) {
+               !n.body.to_lowercase().contains(&qlc) {
                 continue;
             }
         }
-        res.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.description));
+        res.push(format!("[{}] **{}** - {}", n.id, n.raw_title, n.body));
     }
     res
 }
@@ -186,7 +186,7 @@ After consolidation, help text should clarify:
           
           Options:
             --type <TYPE>    Filter by node type prefix (e.g., AE, WF, DR)
-            --grep <PATTERN> Filter by substring in title or description
+            --grep <PATTERN> Filter by substring in title or body
 ```
 
 ---

@@ -26,7 +26,7 @@ mindmap delete $(jq -r '.ids_to_remove[]' plan.json) --force
 ### Patch Multiple Nodes (same update)
 ```bash
 mindmap patch 12 15 19 --title "WF: Updated Title"
-mindmap patch 10 11 12 --desc "Handles auth and security [50]"
+mindmap patch 10 11 12 --body "Handles auth and security [50]"
 mindmap patch 20 21 22 --type WF
 ```
 
@@ -51,7 +51,7 @@ mindmap deprecate 10 11 12 --to 50
 IDS=$(mindmap list --type WF --output json | jq -r '.nodes[].id')
 
 # Step 2: Update all (PHASE 1 needed)
-mindmap patch $IDS --title "WF: Fixed" --desc "Updated description"
+mindmap patch $IDS --title "WF: Fixed" --body "Updated body"
 ```
 
 ### Delete Orphans
@@ -130,8 +130,8 @@ EOF
 $ mindmap list --type WF --output json
 {
   "nodes": [
-    {"id": 10, "type": "WF", "title": "Example", "desc": "..."},
-    {"id": 15, "type": "WF", "title": "Another", "desc": "..."}
+    {"id": 10, "type": "WF", "title": "Example", "body": "..."},
+    {"id": 15, "type": "WF", "title": "Another", "body": "..."}
   ]
 }
 

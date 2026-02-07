@@ -1,13 +1,13 @@
 [package]
 name = "mindmap-cli"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2024"
 authors = ["Björn Roberg <bjorn.roberg@gmail.com>"]
 license-file = "LICENSE"
 readme = "README.md"
 repository = "https://github.com/roobie/mindmap-cli"
 keywords = ["mindmap", "cli", "tool"]
-description = "A CLI program for interacting with MINDMAP files, as described here: https://github.com/roobie/rfc/blob/main/mindmap/MINDMAP.md"
+body = "A CLI program for interacting with MINDMAP files, as described here: https://github.com/roobie/rfc/blob/main/mindmap/MINDMAP.md"
 
 [dependencies]
 blake3 = { version = "1.8.3", features = ["serde"] }

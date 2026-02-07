@@ -221,11 +221,11 @@ mod tests {
         let base = temp.path().join("subdir");
         fs::create_dir(&base)?;
         let base_file = base.join("MINDMAP.md");
-        fs::write(&base_file, "[1] **Test** - description")?;
+        fs::write(&base_file, "[1] **Test** - body")?;
 
         // Create the target file
         let other_file = base.join("other.md");
-        fs::write(&other_file, "[2] **Other** - description")?;
+        fs::write(&other_file, "[2] **Other** - body")?;
 
         let cache = MindmapCache::new(temp.path().to_path_buf());
 
@@ -262,7 +262,7 @@ mod tests {
         let subdir = workspace.join("subdir");
         fs::create_dir(&subdir)?;
         let base_file = subdir.join("MINDMAP.md");
-        fs::write(&base_file, "[1] **Test** - desc")?;
+        fs::write(&base_file, "[1] **Test** - body")?;
 
         let cache = MindmapCache::new(workspace.to_path_buf());
 
@@ -291,7 +291,7 @@ mod tests {
     fn test_load_caches_files() -> Result<()> {
         let temp = TempDir::new()?;
         let file1 = temp.path().join("MINDMAP.md");
-        fs::write(&file1, "[1] **Test** - description\n")?;
+        fs::write(&file1, "[1] **Test** - body\n")?;
 
         let mut cache = MindmapCache::new(temp.path().to_path_buf());
         let visited = std::collections::HashSet::new();
@@ -320,7 +320,7 @@ mod tests {
     fn test_load_detects_cycle() -> Result<()> {
         let temp = TempDir::new()?;
         let file1 = temp.path().join("MINDMAP.md");
-        fs::write(&file1, "[1] **Test** - description\n")?;
+        fs::write(&file1, "[1] **Test** - body\n")?;
 
         let mut cache = MindmapCache::new(temp.path().to_path_buf());
         let mut visited = std::collections::HashSet::new();
@@ -367,7 +367,7 @@ mod tests {
     fn test_cache_stats() -> Result<()> {
         let temp = TempDir::new()?;
         let file1 = temp.path().join("MINDMAP.md");
-        fs::write(&file1, "[1] **Test1** - desc\n[2] **Test2** - desc\n")?;
+        fs::write(&file1, "[1] **Test1** - body\n[2] **Test2** - body\n")?;
 
         let mut cache = MindmapCache::new(temp.path().to_path_buf());
         let visited = std::collections::HashSet::new();
