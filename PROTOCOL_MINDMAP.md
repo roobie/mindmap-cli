@@ -29,8 +29,8 @@ Summary workflow (mandatory)
    - For multiple operations, consider using `batch` mode:
      ```bash
      mindmap-cli batch --input - --format lines <<EOF
-     add --type 'AE' --title 'Entry Points' --desc '...'
-     patch 12 --title 'WF: Project overview' --desc '...'
+     add --type 'AE' --title 'Entry Points' --body '...'
+     patch 12 --title 'WF: Project overview' --body '...'
      delete 13
      deprecate 14 --to 31
      EOF
@@ -38,19 +38,19 @@ Summary workflow (mandatory)
      Use `--dry-run` to preview changes before committing. Batch mode is atomic: all-or-nothing.
    - If several nodes need to be added, updated and/or deleted in a batch; then produce a `.sh` file that contains the changeset, e.g.
 ```bash
-mindmap-cli patch 12 --title 'WF: Project overview & purpose' --desc '...'
+mindmap-cli patch 12 --title 'WF: Project overview & purpose' --body '...'
 
 mindmap-cli delete 13
 
-mindmap-cli add --type 'AE' --title 'Entry Points' --desc '...'
+mindmap-cli add --type 'AE' --title 'Entry Points' --body '...'
 
 mindmap-cli put 15 --line "[15] **DR: Why safety over speed** - explanation here"
 ```
     This ephemeral script can subsequently be executed by the agent or the user.
 
 3) Make the change (non-interactive preferred)
-   - Add a node: `mindmap-cli add --type WF --title "Title" --desc "Description [SOME_NODE_ID] or [link](./file.md)"`
-   - Patch a node (partial): `mindmap-cli patch 31 --title "New title" --desc "Updated desc"`
+   - Add a node: `mindmap-cli add --type WF --title "Title" --body "Description [SOME_NODE_ID] or [link](./file.md)"`
+   - Patch a node (partial): `mindmap-cli patch 31 --title "New title" --body "Updated body"`
    - Put a node (full replace - ID must match): `mindmap-cli put 31 --line "[31] **WF: Example** - Full line text [12]"`
    - Deprecate a node: `mindmap-cli deprecate 12 --redirect 31`
    - Delete a node (after refs removed): `mindmap-cli delete 12`
@@ -61,8 +61,8 @@ mindmap-cli put 15 --line "[15] **DR: Why safety over speed** - explanation here
 
 5) Commit
    - `git add MINDMAP.md` (or other affected files)
-   - `git commit -m "mindmap: <short summary> (nodes: <ids>)\n\n<longer description if needed>"`
-   - Open a PR if appropriate and reference the nodes/changes in the description.
+   - `git commit -m "mindmap: <short summary> (nodes: <ids>)\n\n<longer body if needed>"`
+   - Open a PR if appropriate and reference the nodes/changes in the body.
 
 Editor note
 - Use `mindmap-cli edit <id>` when manual intervention is needed; this opens $EDITOR for an atomic, validated update.
@@ -79,8 +79,8 @@ Batch mode (atomic multi-operation edits)
 - Use `mindmap-cli batch` when applying multiple non-interactive operations atomically:
   - Supported operations: `add`, `patch`, `put`, `delete`, `deprecate`, `verify`.
   - Input format options:
-    - `--format lines` (default): each line is a CLI-style invocation (e.g., `add --type WF --title X --desc Y`). Use double-quotes for multi-word arguments.
-    - `--format json`: each operation is a JSON object in an array (e.g., `[{"op": "add", "type": "WF", "title": "X", "desc": "Y"}, ...]`).
+    - `--format lines` (default): each line is a CLI-style invocation (e.g., `add --type WF --title X --body Y`). Use double-quotes for multi-word arguments.
+    - `--format json`: each operation is a JSON object in an array (e.g., `[{"op": "add", "type": "WF", "title": "X", "body": "Y"}, ...]`).
   - Flags:
     - `--dry-run`: preview changes without writing to file.
     - `--fix`: auto-fix spacing and duplicated type prefixes before committing.

@@ -187,10 +187,10 @@ fn cmd_multi_patch(
     ids: &[u32],
     type_: Option<&str>,
     title: Option<&str>,
-    desc: Option<&str>,
+    body: Option<&str>,
 ) -> Result<()> {
     for id in ids {
-        cmd_patch(mm, *id, type_, title, desc, false)?;
+        cmd_patch(mm, *id, type_, title, body, false)?;
     }
     mm.save()
 }

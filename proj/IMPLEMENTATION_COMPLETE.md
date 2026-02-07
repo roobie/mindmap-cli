@@ -41,7 +41,7 @@ Successfully implemented the consolidation of `mindmap-cli search` and `mindmap-
 
 **Updated MINDMAP.md:**
 - Node [42] status changed from TODO → DONE
-- Updated description to reflect completion
+- Updated body to reflect completion
 - Details: "Consolidated: cmd_search() removed; search now delegates to cmd_list()"
 
 ## Verification

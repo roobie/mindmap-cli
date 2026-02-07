@@ -1,27 +1,27 @@
 # mindmap-cli
 
 A small CLI for inspecting and safely editing one-line MINDMAP files (default: ./MINDMAP.md).
-One-node-per-line format: `[N] **Title** - description with [N] references`. IDs are stable numeric values.
+One-node-per-line format: `[N] **Title** - body with [N] references`. IDs are stable numeric values.
 
 ## Quick Reference
 
-| Task | Command |
-|------|---------|
-| **View a node** | `mindmap-cli show 10` |
-| **Find nodes by type** | `mindmap-cli list --type AE` |
-| **Search nodes** | `mindmap-cli search auth` or `mindmap-cli list --grep auth` |
-| **Find incoming references** | `mindmap-cli refs 10` (← nodes referring to [10]) |
-| **Find outgoing references** | `mindmap-cli links 10` (→ nodes that [10] refers to) |
-| **Add a node** | `mindmap-cli add --type AE --title "Title" --desc "Description [12]"` |
-| **Edit a node** | `mindmap-cli edit 12` (opens $EDITOR) |
-| **Update a node** | `mindmap-cli patch 12 --title "New Title"` |
-| **Replace a node** | `mindmap-cli put 12 --line "[12] **AE: Title** - desc [10]"` |
-| **Delete a node** | `mindmap-cli delete 12 --force` |
-| **Find orphans** | `mindmap-cli orphans` or `mindmap-cli orphans --with-descriptions` |
-| **Validate file** | `mindmap-cli lint` or `mindmap-cli lint --fix` |
-| **Batch operations** | `mindmap-cli batch --input commands.txt` |
-| **Output as JSON** | Add `--output json` to any command |
-| **Use stdin** | `mindmap-cli --file - show 10` (read-only) |
+| Task                         | Command                                                               |
+|------------------------------|-----------------------------------------------------------------------|
+| **View a node**              | `mindmap-cli show 10`                                                 |
+| **Find nodes by type**       | `mindmap-cli list --type AE`                                          |
+| **Search nodes**             | `mindmap-cli search auth` or `mindmap-cli list --grep auth`           |
+| **Find incoming references** | `mindmap-cli refs 10` (← nodes referring to [10])                     |
+| **Find outgoing references** | `mindmap-cli links 10` (→ nodes that [10] refers to)                  |
+| **Add a node**               | `mindmap-cli add --type AE --title "Title" --body "Description [12]"` |
+| **Edit a node**              | `mindmap-cli edit 12` (opens $EDITOR)                                 |
+| **Update a node**            | `mindmap-cli patch 12 --title "New Title"`                            |
+| **Replace a node**           | `mindmap-cli put 12 --line "[12] **AE: Title** - body [10]"`          |
+| **Delete a node**            | `mindmap-cli delete 12 --force`                                       |
+| **Find orphans**             | `mindmap-cli orphans` or `mindmap-cli orphans --with-descriptions`    |
+| **Validate file**            | `mindmap-cli lint` or `mindmap-cli lint --fix`                        |
+| **Batch operations**         | `mindmap-cli batch --input commands.txt`                              |
+| **Output as JSON**           | Add `--output json` to any command                                    |
+| **Use stdin**                | `mindmap-cli --file - show 10` (read-only)                            |
 
 ## Core usage examples:
 
@@ -39,7 +39,7 @@ mindmap-cli list --type AE --grep auth
 mindmap-cli search auth
 
 # add a node (auto picks next free ID)
-mindmap-cli add --type AE --title "AuthService" --desc "Handles auth [12]"
+mindmap-cli add --type AE --title "AuthService" --body "Handles auth [12]"
 
 # (interactive) add (opens $EDITOR and tries to store the saved data as a new node)
 mindmap-cli add
@@ -47,25 +47,25 @@ mindmap-cli add
 # (interactive) open node in $EDITOR for safe edit
 mindmap-cli edit 12
 
-# partial (scriptable) update: change title and/or description
-mindmap-cli patch 12 --title "AuthSvc" --desc "Updated desc"
+# partial (scriptable) update: change title and/or body
+mindmap-cli patch 12 --title "AuthSvc" --body "Updated body"
 
 # full-line replace (must keep same id)
-mindmap-cli put 12 --line "[12] **AE: AuthSvc** - Updated desc [10]"
+mindmap-cli put 12 --line "[12] **AE: AuthSvc** - Updated body [10]"
 
 # delete a node (use --force to remove even if referenced)
 mindmap-cli delete 12 --force
 
 # BATCH non-interactive mutations:
 mindmap-cli batch --input - <<EOF
-  add --type AE --title "AuthService" --desc "Handles auth [12]"
-  put 12 --line "[12] **AE: AuthSvc** - Updated desc [10]"
-  patch 14 --title "TelemetrySvc" --desc "Updated desc ..."
+  add --type AE --title "AuthService" --body "Handles auth [12]"
+  put 12 --line "[12] **AE: AuthSvc** - Updated body [10]"
+  patch 14 --title "TelemetrySvc" --body "Updated body ..."
   delete 22
 EOF
 
 # lint the file for syntax / ref issues
-mindmap-cli lint
+mindmap-cli lint # --fix to write fixes in place
 
 # list orphan nodes (no incoming and no outgoing references)
 mindmap-cli orphans --with-descriptions
@@ -95,7 +95,7 @@ Example:
 mindmap-cli refs 2
 → Shows [1] and [3] (nodes that refer to [2])
 
-mindmap-cli links 1  
+mindmap-cli links 1
 → Shows [2] and [3] (nodes that [1] refers to)
 ```
 
@@ -113,3 +113,31 @@ mindmap-cli --output json show 12 | jq '.node.id'
 mindmap-cli --output json list --type AE | jq '.items'
 ```
 
+## Contributors
+
+We welcome contributions from the community! This project is maintained by:
+
+- **Björn Roberg** (@roobie) - Original author and maintainer
+
+### Contributing
+
+Contributions are welcome and encouraged! Here's how you can help:
+
+- **Bug Reports**: File issues for bugs you find
+- **Feature Requests**: Suggest new features or improvements
+- **Code Contributions**: Submit pull requests with fixes or enhancements
+- **Documentation**: Improve documentation, examples, or tutorials
+- **Testing**: Help test new features and report issues
+
+Please see our [Contributing Guide](CONTRIBUTING.md) for detailed guidelines (coming soon).
+
+To get started:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Lint and run tests (`mise test`)
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+All contributions must follow our code of conduct and contribution guidelines.

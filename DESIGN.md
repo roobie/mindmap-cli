@@ -18,21 +18,21 @@ Read / Inspect
 Query / Navigate
 - refs <id>: list nodes that reference id
 - links <id>: list outgoing references from id
-- search <query>: case-insensitive substring match over title and description
+- search <query>: case-insensitive substring match over title and body
 
 Edit / Maintain (implemented)
-- add: mindmap add --type <TYPE> --title <TITLE> --desc <DESC>
+- add: mindmap add --type <TYPE> --title <TITLE> --body <DESC>
   - Appends a properly formatted line and registers a new node id (next_id = max existing + 1).
 - edit: mindmap edit <id>
   - Opens a temp file in $EDITOR containing a single node line; edited file must produce exactly one valid node line and preserve the bracketed id.
-- patch: mindmap patch <id> [--type TYPE] [--title TITLE] [--desc DESC] [--strict]
+- patch: mindmap patch <id> [--type TYPE] [--title TITLE] [--body DESC] [--strict]
   - Partial update; unspecified fields are preserved. When a type prefix is present, patch splits raw_title on first ':' to determine prefix vs title.
-- put: mindmap put <id> --line "[id] **TYPE: Title** - description" [--strict]
+- put: mindmap put <id> --line "[id] **TYPE: Title** - body" [--strict]
   - Full-line, idempotent replacement. Provided line is parsed and must contain the same id.
 - deprecate: mindmap deprecate <id> --to <id>
   - Adds a "[DEPRECATED → X]" prefix to the title if not already present.
 - verify: mindmap verify <id>
-  - Appends a (verify YYYY-MM-DD) tag to the description (idempotent).
+  - Appends a (verify YYYY-MM-DD) tag to the body (idempotent).
 
 Lint / Safety (implemented)
 - mindmap lint reports:
@@ -70,9 +70,9 @@ Subcommands (implemented):
 - refs <id>
 - links <id>
 - search <query>
-- add --type <TYPE> --title <TITLE> --desc <DESC>
+- add --type <TYPE> --title <TITLE> --body <DESC>
 - edit <id>  (uses $EDITOR)
-- patch <id> [--type] [--title] [--desc] [--strict]
+- patch <id> [--type] [--title] [--body] [--strict]
 - put <id> --line "..." [--strict]
 - deprecate <id> --to <id>
 - verify <id>
@@ -100,7 +100,7 @@ Help and examples are embedded in the CLI (long_about / after_help) so `mindmap 
   - Both put and patch accept --strict; when set, the operation fails if any referenced id does not exist. Default behavior is permissive (allow and warn).
 
 - References and self-links:
-  - Parser collects numeric IDs from the description via \[(\d+)\]. Self-references (node referring to itself) are ignored when populating the node.references vector.
+  - Parser collects numeric IDs from the body via \[(\d+)\]. Self-references (node referring to itself) are ignored when populating the node.references vector.
 
 
 5. Tests & CI
@@ -124,10 +124,10 @@ Help and examples are embedded in the CLI (long_about / after_help) so `mindmap 
 ```bash
 mindmap show 10
 mindmap list --type AE --grep auth
-mindmap add --type AE --title "AuthService" --desc "Handles auth [12]"
+mindmap add --type AE --title "AuthService" --body "Handles auth [12]"
 mindmap edit 12
-mindmap patch 12 --title "AuthSvc" --desc "Updated desc"
-mindmap put 12 --line "[12] **AE: AuthSvc** - Updated desc [10]"
+mindmap patch 12 --title "AuthSvc" --body "Updated body"
+mindmap put 12 --line "[12] **AE: AuthSvc** - Updated body [10]"
 mindmap lint
 ```
 

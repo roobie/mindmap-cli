@@ -21,11 +21,11 @@ pub fn cmd_search(mm: &Mindmap, query: &str) -> Vec<String> {
     let qlc = query.to_lowercase();
     let mut out = Vec::new();
     for n in &mm.nodes {
-        if n.raw_title.to_lowercase().contains(&qlc) || n.description.to_lowercase().contains(&qlc)
+        if n.raw_title.to_lowercase().contains(&qlc) || n.body.to_lowercase().contains(&qlc)
         {
             out.push(format!(
                 "[{}] **{}** - {}",
-                n.id, n.raw_title, n.description
+                n.id, n.raw_title, n.body
             ));
         }
     }
@@ -35,7 +35,7 @@ pub fn cmd_search(mm: &Mindmap, query: &str) -> Vec<String> {
 
 **Key characteristics:**
 - Takes a single `query: &str` positional argument
-- Searches both title and description (case-insensitive)
+- Searches both title and body (case-insensitive)
 - Returns formatted node lines
 - No type filtering
 
@@ -54,14 +54,14 @@ pub fn cmd_list(mm: &Mindmap, type_filter: Option<&str>, grep: Option<&str>) -> 
         if let Some(q) = grep {
             let qlc = q.to_lowercase();
             if !n.raw_title.to_lowercase().contains(&qlc)
-                && !n.description.to_lowercase().contains(&qlc)
+                && !n.body.to_lowercase().contains(&qlc)
             {
                 continue;
             }
         }
         res.push(format!(
             "[{}] **{}** - {}",
-            n.id, n.raw_title, n.description
+            n.id, n.raw_title, n.body
         ));
     }
     res

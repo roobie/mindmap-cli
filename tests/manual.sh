@@ -10,9 +10,9 @@ echo "[1] **AE: Original** - content" > /tmp/real_race.md
 slow_batch() {
     cargo run --quiet -- batch --file /tmp/real_race.md --input <(
         # Simulate a multi-line batch that takes time
-        echo 'add --type WF --title "Step 1" --desc "First op"'
+        echo 'add --type WF --title "Step 1" --body "First op"'
         sleep 1  # Sleep during batch processing
-        echo 'add --type WF --title "Step 2" --desc "Second op"'
+        echo 'add --type WF --title "Step 2" --body "Second op"'
     ) 2>&1
 }
 
@@ -63,12 +63,12 @@ echo ""
 # Create a batch operations file
 cat > /tmp/batch_final_ops.txt << 'OPS'
 # Add new nodes
-add --type DR --title "Architecture decision" --desc "Use microservices [1]"
-add --type META --title "Status" --desc "In progress"
+add --type DR --title "Architecture decision" --body "Use microservices [1]"
+add --type META --title "Status" --body "In progress"
 
 # Patch existing nodes
 patch 2 --title "Authorization module"
-patch 3 --desc "manages tasks and workflows [1]"
+patch 3 --body "manages tasks and workflows [1]"
 
 # Deprecate old node
 deprecate 3 --to 1

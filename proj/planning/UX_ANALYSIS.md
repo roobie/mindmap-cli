@@ -621,7 +621,7 @@ mindmap-cli search "auth" --regex "^AE: .*auth" # Regex support
 | Show node details | `mindmap-cli show 12` |
 | View incoming refs | `mindmap-cli refs 12` |
 | View outgoing refs | `mindmap-cli links 12` |
-| Add new node | `mindmap-cli add --type AE --title "..." --desc "..."` |
+| Add new node | `mindmap-cli add --type AE --title "..." --body "..."` |
 | Edit node | `mindmap-cli edit 12` |
 | Validate file | `mindmap-cli lint` |
 | Find isolated nodes | `mindmap-cli orphans` |

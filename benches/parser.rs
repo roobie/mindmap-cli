@@ -3,8 +3,7 @@ use mindmap_cli::{Mindmap, parse_node_line};
 use std::io::Cursor;
 
 fn bench_parse_node_line(c: &mut Criterion) {
-    let line =
-        "[123] **AE: Example Node** - This is a description with [456] and [789] references.";
+    let line = "[123] **AE: Example Node** - This is a body with [456] and [789] references.";
     c.bench_function("parse_node_line", |b| {
         b.iter(|| {
             let _ = parse_node_line(black_box(line), 0);
