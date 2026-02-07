@@ -478,6 +478,76 @@ impl Mindmap {
             self.by_id = normalized_mm.by_id;
         }
 
+        // 3) Fix multiline nodes by replacing illegal newlines with escaped \n
+        let orig = self.lines.clone();
+        let mut fixed_lines: Vec<String> = Vec::new();
+        let mut i = 0usize;
+
+        while i < orig.len() {
+            let line = &orig[i];
+
+            // Check if this line is a node
+            if let Ok(node) = parse_node_line(line, i) {
+                // Look ahead to see if next non-blank line is a continuation (not a node)
+                let mut j = i + 1;
+                let mut continuation_lines = Vec::new();
+
+                // Collect all continuation lines (lines that don't start with [ and aren't blank)
+                while j < orig.len() {
+                    let next_line = &orig[j];
+                    let trimmed = next_line.trim_start();
+
+                    // If it's a blank line, skip it
+                    if trimmed.is_empty() {
+                        j += 1;
+                        continue;
+                    }
+
+                    // If it's a valid node, stop collecting continuations
+                    if trimmed.starts_with('[') {
+                        break;
+                    }
+
+                    // Otherwise it's a continuation line
+                    continuation_lines.push(next_line.clone());
+                    j += 1;
+                }
+
+                if !continuation_lines.is_empty() {
+                    // This node spans multiple lines - fix it by replacing newlines with \n
+                    let cont_count = continuation_lines.len();
+                    let mut fixed_line = line.clone();
+                    for cont in continuation_lines {
+                        // Append continuation with literal \n escape
+                        fixed_line.push_str("\\n");
+                        fixed_line.push_str(&cont);
+                    }
+
+                    fixed_lines.push(fixed_line.clone());
+                    report.multiline_fixes.push(MultilineFix {
+                        id: node.id,
+                        old_lines_count: 1 + cont_count,
+                        new_single_line: fixed_line.clone(),
+                    });
+
+                    // Skip the continuation lines we just processed
+                    i = j;
+                    continue;
+                }
+            }
+
+            fixed_lines.push(line.clone());
+            i += 1;
+        }
+
+        if !report.multiline_fixes.is_empty() {
+            let content = fixed_lines.join("\n") + "\n";
+            let normalized_mm = Mindmap::from_string(content, self.path.clone())?;
+            self.lines = normalized_mm.lines;
+            self.nodes = normalized_mm.nodes;
+            self.by_id = normalized_mm.by_id;
+        }
+
         Ok(report)
     }
 }
@@ -715,23 +785,29 @@ pub fn cmd_links(mm: &Mindmap, id: u32) -> Option<Vec<Reference>> {
     mm.get_node(id).map(|n| n.references.clone())
 }
 
+// Helper: normalize newlines in body text by replacing literal newlines with escaped \n
+fn normalize_body_newlines(body: &str) -> String {
+    body.replace('\n', "\\n").replace('\r', "")
+}
+
 // NOTE: cmd_search was consolidated into cmd_list to eliminate code duplication.
 // See `Commands::Search` handler below which delegates to `cmd_list(mm, None, Some(query))`.
 
 pub fn cmd_add(mm: &mut Mindmap, type_prefix: &str, title: &str, body: &str) -> Result<u32> {
     let id = mm.next_id();
     let full_title = format!("{}: {}", type_prefix, title);
-    let line = format!("[{}] **{}** - {}", id, full_title, body);
+    let normalized_body = normalize_body_newlines(body);
+    let line = format!("[{}] **{}** - {}", id, full_title, normalized_body);
 
     mm.lines.push(line.clone());
 
     let line_index = mm.lines.len() - 1;
-    let references = extract_refs_from_str(body, Some(id));
+    let references = extract_refs_from_str(&normalized_body, Some(id));
 
     let node = Node {
         id,
         raw_title: full_title,
-        body: body.to_string(),
+        body: normalized_body,
         references,
         line_index,
     };
@@ -891,14 +967,23 @@ pub fn cmd_edit(mm: &mut Mindmap, id: u32, editor: &str) -> Result<()> {
     let edited = std::fs::read_to_string(tmp.path())?;
     let edited_line = edited.lines().next().unwrap_or("").trim();
 
+    // Normalize newlines in edited content
+    let normalized_line = if let Some(pos) = edited_line.find(" - ") {
+        let (prefix, body_part) = edited_line.split_at(pos + 3);
+        let normalized_body = normalize_body_newlines(body_part);
+        format!("{}{}", prefix, normalized_body)
+    } else {
+        edited_line.to_string()
+    };
+
     // parse and validate using manual parser
-    let parsed = parse_node_line(edited_line, node.line_index)?;
+    let parsed = parse_node_line(&normalized_line, node.line_index)?;
     if parsed.id != id {
         return Err(anyhow::anyhow!("Cannot change node ID"));
     }
 
     // all good: replace line in mm.lines and update node fields
-    mm.lines[node.line_index] = edited_line.to_string();
+    mm.lines[node.line_index] = normalized_line;
     let new_title = parsed.raw_title;
     let new_desc = parsed.body;
     let new_refs = parsed.references;
@@ -919,7 +1004,16 @@ pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()
         .get(&id)
         .ok_or_else(|| anyhow::anyhow!(format!("Node [{}] not found", id)))?;
 
-    let parsed = parse_node_line(line, mm.nodes[idx].line_index)?;
+    // Normalize newlines in the provided line before parsing
+    let normalized_line = if let Some(pos) = line.find(" - ") {
+        let (prefix, body_part) = line.split_at(pos + 3);
+        let normalized_body = normalize_body_newlines(body_part);
+        format!("{}{}", prefix, normalized_body)
+    } else {
+        line.to_string()
+    };
+
+    let parsed = parse_node_line(&normalized_line, mm.nodes[idx].line_index)?;
     if parsed.id != id {
         return Err(anyhow::anyhow!("PUT line id does not match target id"));
     }
@@ -939,7 +1033,7 @@ pub fn cmd_put(mm: &mut Mindmap, id: u32, line: &str, strict: bool) -> Result<()
     }
 
     // apply
-    mm.lines[mm.nodes[idx].line_index] = line.to_string();
+    mm.lines[mm.nodes[idx].line_index] = normalized_line;
     let node_mut = &mut mm.nodes[idx];
     node_mut.raw_title = parsed.raw_title;
     node_mut.body = parsed.body;
@@ -972,7 +1066,8 @@ pub fn cmd_patch(
 
     let new_type = typ.unwrap_or(existing_type.unwrap_or(""));
     let new_title = title.unwrap_or(existing_title);
-    let new_desc = body.unwrap_or(&node.body);
+    let new_body_raw = body.unwrap_or(&node.body);
+    let new_body = normalize_body_newlines(new_body_raw);
 
     // build raw title: if type is empty, omit prefix
     let new_raw_title = if new_type.is_empty() {
@@ -981,7 +1076,7 @@ pub fn cmd_patch(
         format!("{}: {}", new_type, new_title)
     };
 
-    let new_line = format!("[{}] **{}** - {}", id, new_raw_title, new_desc);
+    let new_line = format!("[{}] **{}** - {}", id, new_raw_title, new_body);
 
     // validate
     let parsed = parse_node_line(&new_line, node.line_index)?;
@@ -1120,7 +1215,46 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
         }
     }
 
-    // 2) Duplicate IDs: scan lines for node ids
+    // 2) Multiline nodes: detect nodes that span multiple lines
+    let mut i = 0;
+    while i < mm.lines.len() {
+        let line = &mm.lines[i];
+        if let Ok(node) = parse_node_line(line, i) {
+            // Look ahead to check for continuation lines
+            let mut j = i + 1;
+            let mut has_continuation = false;
+
+            while j < mm.lines.len() {
+                let next_line = &mm.lines[j];
+                let trimmed = next_line.trim_start();
+
+                // Skip blank lines
+                if trimmed.is_empty() {
+                    j += 1;
+                    continue;
+                }
+
+                // If it's a node, stop
+                if trimmed.starts_with('[') {
+                    break;
+                }
+
+                // Otherwise it's a continuation line
+                has_continuation = true;
+                break;
+            }
+
+            if has_continuation {
+                warnings.push(format!(
+                    "Multiline: node {} spans multiple lines (line {}). Use 'lint --fix' to convert newlines to escaped \\n",
+                    node.id, i + 1
+                ));
+            }
+        }
+        i += 1;
+    }
+
+    // 3) Duplicate IDs: scan lines for node ids
     let mut id_map: HashMap<u32, Vec<usize>> = HashMap::new();
     for (i, line) in mm.lines.iter().enumerate() {
         if let Ok(node) = parse_node_line(line, i) {
@@ -1136,7 +1270,7 @@ pub fn cmd_lint(mm: &Mindmap) -> Result<Vec<String>> {
         }
     }
 
-    // 3) Missing references
+    // 4) Missing references
     for n in &mm.nodes {
         for r in &n.references {
             match r {
@@ -2544,6 +2678,12 @@ pub fn run(cli: Cli) -> Result<()> {
                             tf.id, tf.old, tf.new
                         );
                     }
+                    for mf in &report.multiline_fixes {
+                        eprintln!(
+                            "Fixed multiline: node {} ({} lines) -> single line with escaped \\n",
+                            mf.id, mf.old_lines_count
+                        );
+                    }
                     if !report.any_changes() {
                         eprintln!("No fixes necessary");
                     }
@@ -3080,6 +3220,7 @@ pub fn run(cli: Cli) -> Result<()> {
 pub struct FixReport {
     pub spacing: Vec<usize>,
     pub title_fixes: Vec<TitleFix>,
+    pub multiline_fixes: Vec<MultilineFix>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -3089,9 +3230,16 @@ pub struct TitleFix {
     pub new: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MultilineFix {
+    pub id: u32,
+    pub old_lines_count: usize,
+    pub new_single_line: String,
+}
+
 impl FixReport {
     pub fn any_changes(&self) -> bool {
-        !self.spacing.is_empty() || !self.title_fixes.is_empty()
+        !self.spacing.is_empty() || !self.title_fixes.is_empty() || !self.multiline_fixes.is_empty()
     }
 }
 
@@ -3610,6 +3758,38 @@ mod tests {
         let content = std::fs::read_to_string(file.path())?;
         // Should have exactly one blank line between nodes
         assert_eq!(content, "[1] **AE: A** - a\n\n[2] **AE: B** - b\n");
+        temp.close()?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_lint_fix_multiline_nodes() -> Result<()> {
+        let temp = assert_fs::TempDir::new()?;
+        let file = temp.child("MINDMAP.md");
+        file.write_str("[1] **AE: Multi** - Line 1\nLine 2\n\n[2] **AE: Valid** - Single line\n")?;
+
+        let mut mm = Mindmap::load(file.path().to_path_buf())?;
+        let report = mm.apply_fixes()?;
+
+        // Should detect and fix the multiline node
+        assert_eq!(report.multiline_fixes.len(), 1);
+        assert_eq!(report.multiline_fixes[0].id, 1);
+        assert_eq!(report.multiline_fixes[0].old_lines_count, 2);
+
+        mm.save()?;
+
+        let content = std::fs::read_to_string(file.path())?;
+        // Verify the newline is escaped
+        assert!(content.contains("[1] **AE: Multi** - Line 1\\nLine 2"));
+        // Verify node 2 is still valid
+        assert!(content.contains("[2] **AE: Valid** - Single line"));
+
+        // Verify lint passes now
+        let mm = Mindmap::load(file.path().to_path_buf())?;
+        let warnings = cmd_lint(&mm)?;
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0], "Lint OK");
+
         temp.close()?;
         Ok(())
     }
